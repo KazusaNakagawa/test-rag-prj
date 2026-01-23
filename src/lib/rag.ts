@@ -1,0 +1,232 @@
+import OpenAI from "openai";
+import { Client } from "@notionhq/client";
+import { createClient } from "@supabase/supabase-js";
+import { requireEnv } from "./env";
+
+type RagMatch = {
+  id: string;
+  source: string;
+  source_id: string;
+  title: string | null;
+  content: string;
+  chunk_index: number;
+  url: string | null;
+  metadata: Record<string, unknown>;
+  similarity: number;
+};
+
+type RichTextItem = {
+  plain_text: string;
+};
+
+const openai = new OpenAI({
+  apiKey: requireEnv("OPENAI_API_KEY"),
+});
+
+let supabaseClient:
+  | ReturnType<typeof createClient>
+  | null
+  | undefined = undefined;
+
+function getSupabaseClient() {
+  if (supabaseClient !== undefined) {
+    return supabaseClient;
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    supabaseClient = null;
+    return supabaseClient;
+  }
+
+  supabaseClient = createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false },
+  });
+  return supabaseClient;
+}
+
+function getPlainText(richText?: RichTextItem[]) {
+  if (!richText) return "";
+  return richText.map((item) => item.plain_text).join("");
+}
+
+function chunkText(text: string, chunkSize = 1200) {
+  if (text.length <= chunkSize) {
+    return [text];
+  }
+  const chunks: string[] = [];
+  for (let index = 0; index < text.length; index += chunkSize) {
+    chunks.push(text.slice(index, index + chunkSize).trim());
+  }
+  return chunks.filter(Boolean);
+}
+
+async function listBlockChildren(notion: Client, blockId: string) {
+  const blocks: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const response = await notion.blocks.children.list({
+      block_id: blockId,
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    blocks.push(...response.results);
+    cursor = response.has_more ? response.next_cursor ?? undefined : undefined;
+  } while (cursor);
+  return blocks;
+}
+
+function extractBlockText(block: any) {
+  const type = block.type;
+  const payload = block[type];
+  if (!payload) return "";
+
+  if (payload.rich_text) {
+    return getPlainText(payload.rich_text);
+  }
+
+  if (type === "code") {
+    return getPlainText(payload.rich_text);
+  }
+
+  if (type === "heading_1" || type === "heading_2" || type === "heading_3") {
+    return getPlainText(payload.rich_text);
+  }
+
+  if (
+    type === "to_do" ||
+    type === "bulleted_list_item" ||
+    type === "numbered_list_item"
+  ) {
+    return getPlainText(payload.rich_text);
+  }
+
+  if (type === "quote" || type === "callout" || type === "toggle") {
+    return getPlainText(payload.rich_text);
+  }
+
+  return "";
+}
+
+async function collectBlockText(notion: Client, blockId: string) {
+  const blocks = await listBlockChildren(notion, blockId);
+  const texts: string[] = [];
+
+  for (const block of blocks) {
+    const text = extractBlockText(block);
+    if (text) {
+      texts.push(text);
+    }
+
+    if (block.has_children) {
+      const childTexts = await collectBlockText(notion, block.id);
+      texts.push(...childTexts);
+    }
+  }
+
+  return texts;
+}
+
+function getPageTitle(page: any) {
+  const properties = page.properties ?? {};
+  const titleProperty = Object.values(properties).find(
+    (prop: any) => prop.type === "title"
+  ) as { title?: RichTextItem[] } | undefined;
+
+  return getPlainText(titleProperty?.title) || "Untitled";
+}
+
+async function retrieveFromNotion(query: string, topK: number) {
+  const notionApiKey = requireEnv("NOTION_API_KEY");
+  const databaseId = process.env.NOTION_DATABASE_ID;
+  const notion = new Client({ auth: notionApiKey });
+
+  console.info("[notion] search start", { query, topK, databaseId });
+  const response = await notion.search({
+    query,
+    page_size: Math.min(topK * 2, 10),
+    filter: { property: "object", value: "page" },
+  });
+
+  const pages = response.results
+    .filter((result: any) => {
+      if (!databaseId) return true;
+      const parent = result.parent ?? {};
+      return parent.type === "database_id" && parent.database_id === databaseId;
+    })
+    .slice(0, topK);
+
+  console.info("[notion] search results", {
+    total: response.results.length,
+    filtered: pages.length,
+    titles: pages.map((page: any) => getPageTitle(page)),
+  });
+
+  const matches: RagMatch[] = [];
+  for (const page of pages) {
+    const title = getPageTitle(page);
+    const texts = await collectBlockText(notion, page.id);
+    const content = texts.join("\n\n").trim();
+    if (!content) continue;
+    const chunks = chunkText(content);
+    const chunk = chunks[0];
+    matches.push({
+      id: page.id,
+      source: "notion",
+      source_id: page.id,
+      title,
+      content: chunk,
+      chunk_index: 0,
+      url: page.url ?? null,
+      metadata: {
+        notion_url: page.url ?? null,
+        last_edited_time: page.last_edited_time,
+      },
+      similarity: 0.5,
+    });
+  }
+
+  console.info("[notion] matches ready", { matches: matches.length });
+  return matches;
+}
+
+export async function retrieveDocuments(query: string, topK = 5) {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return retrieveFromNotion(query, topK);
+  }
+
+  const embeddingResponse = await openai.embeddings.create({
+    model: "text-embedding-3-small",
+    input: query,
+  });
+
+  const [embedding] = embeddingResponse.data;
+  const { data, error } = await supabase.rpc("match_documents", {
+    query_embedding: embedding.embedding,
+    match_count: topK,
+  });
+
+  if (error) {
+    throw new Error(`Supabase search failed: ${error.message}`);
+  }
+
+  return (data ?? []) as RagMatch[];
+}
+
+export function formatDocumentsForPrompt(matches: RagMatch[]) {
+  if (matches.length === 0) {
+    return "No relevant documents were found.";
+  }
+
+  return matches
+    .map((match, index) => {
+      const title = match.title ?? "Untitled";
+      const urlLine = match.url ? `URL: ${match.url}` : "URL: n/a";
+      return `# Doc ${index + 1}\nTitle: ${title}\n${urlLine}\nContent:\n${match.content}`;
+    })
+    .join("\n\n");
+}

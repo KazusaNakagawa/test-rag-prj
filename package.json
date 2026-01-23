@@ -1,0 +1,39 @@
+{
+  "name": "rag_prj",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "ingest:notion": "tsx scripts/ingest-notion.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.15",
+    "@ai-sdk/react": "^3.0.50",
+    "@notionhq/client": "^5.7.0",
+    "@supabase/supabase-js": "^2.91.0",
+    "ai": "^6.0.46",
+    "dotenv": "^17.2.3",
+    "github-markdown-css": "^5.8.1",
+    "next": "16.1.4",
+    "openai": "^6.16.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.4",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.0",
+    "typescript": "^5"
+  }
+}

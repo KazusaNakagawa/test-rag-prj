@@ -1,0 +1,102 @@
+@import "tailwindcss";
+@import "github-markdown-css/github-markdown.css";
+
+:root {
+  --background: #f7f4ef;
+  --foreground: #191512;
+  --accent: #ff6a3d;
+  --accent-dark: #d64921;
+  --surface: #fffdf8;
+  --stroke: #e3d7cc;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+}
+
+body {
+  background: radial-gradient(circle at top, #fff2e8 0%, #f7f4ef 55%, #efe7de 100%);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+::selection {
+  background: rgba(255, 106, 61, 0.25);
+}
+
+.markdown {
+  line-height: 1.55;
+}
+
+.markdown p {
+  margin: 0 0 0.5rem;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0.35rem 0 0.5rem;
+  padding-left: 1.25rem;
+  list-style-position: outside;
+}
+
+.markdown li {
+  margin: 0.15rem 0;
+}
+
+.markdown ol {
+  list-style-type: decimal;
+}
+
+.markdown ul {
+  list-style-type: disc;
+}
+
+.markdown li p {
+  margin: 0.35rem 0;
+}
+
+.markdown code {
+  background: rgba(15, 10, 5, 0.08);
+  border-radius: 0.4rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.85em;
+}
+
+.markdown pre {
+  background: rgba(15, 10, 5, 0.08);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+.markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-body {
+  color: inherit;
+  background: transparent;
+  font-size: 0.93rem;
+  line-height: 1.55;
+  max-width: none;
+  margin: 0;
+}
+
+.markdown-body ol,
+.markdown-body ul {
+  padding-left: 1.15rem;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+  margin: 0.6rem 0 0.35rem;
+}
+
+.markdown-body li + li {
+  margin-top: 0.25rem;
+}
