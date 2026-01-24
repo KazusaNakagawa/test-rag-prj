@@ -48,3 +48,27 @@ as $$
   order by documents.embedding <=> query_embedding
   limit match_count;
 $$;
+
+create table if not exists chat_logs (
+  id uuid primary key default gen_random_uuid(),
+  chat_id uuid,
+  user_message text not null,
+  assistant_message text not null,
+  model text,
+  finish_reason text,
+  prompt_tokens int,
+  completion_tokens int,
+  total_tokens int,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+create table if not exists chat_sessions (
+  id uuid primary key default gen_random_uuid(),
+  title text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists chat_logs_chat_id_idx on chat_logs (chat_id);
+create index if not exists chat_sessions_updated_at_idx on chat_sessions (updated_at);
