@@ -65,11 +65,21 @@ function generateChatId() {
   return id;
 }
 
+function getOrCreateUserId() {
+  if (typeof window === "undefined") return null;
+  const stored = window.localStorage.getItem("rag_user_id");
+  if (stored) return stored;
+  const nextId = generateChatId();
+  window.localStorage.setItem("rag_user_id", nextId);
+  return nextId;
+}
+
 export default function Home() {
   const { messages, sendMessage, status, setMessages } = useChat();
   const [input, setInput] = useState("");
   const [previewMarkdown, setPreviewMarkdown] = useState<string | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<
     { id: string; title: string | null; updated_at: string | null }[]
   >([]);
@@ -93,8 +103,18 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const storedUserId = getOrCreateUserId();
+    if (storedUserId) {
+      setUserId(storedUserId);
+    }
+  }, []);
+
+  useEffect(() => {
     let isMounted = true;
-    fetch("/api/chat/sessions")
+    if (!userId) return () => undefined;
+    fetch("/api/chat/sessions", {
+      headers: { "x-user-id": userId },
+    })
       .then((response) => response.json())
       .then((payload) => {
         if (!isMounted) return;
@@ -108,11 +128,14 @@ export default function Home() {
     return () => {
       isMounted = false;
     };
-  }, [chatId]);
+  }, [chatId, userId]);
 
   const loadChatLogs = (targetChatId: string) => {
+    if (!userId) return Promise.resolve();
     setIsLoadingHistory(true);
-    return fetch(`/api/chat/logs?chat_id=${targetChatId}`)
+    return fetch(`/api/chat/logs?chat_id=${targetChatId}`, {
+      headers: { "x-user-id": userId },
+    })
       .then((response) => response.json())
       .then((payload) => {
         if (!payload?.messages) return;
@@ -123,15 +146,17 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!chatId) return;
+    if (!chatId || !userId) return;
     loadChatLogs(chatId);
-  }, [chatId, setMessages]);
+  }, [chatId, userId, setMessages]);
 
   const refreshSessions = () =>
-    fetch("/api/chat/sessions")
-      .then((response) => response.json())
-      .then((payload) => setSessions(payload?.sessions ?? []))
-      .catch(() => null);
+    userId
+      ? fetch("/api/chat/sessions", { headers: { "x-user-id": userId } })
+          .then((response) => response.json())
+          .then((payload) => setSessions(payload?.sessions ?? []))
+          .catch(() => null)
+      : Promise.resolve();
 
   const handleNewChat = () => {
     const nextChatId = generateChatId();
@@ -168,7 +193,6 @@ export default function Home() {
                 onClick={() => {
                   setChatId(session.id);
                   setMessages([]);
-                  loadChatLogs(session.id);
                 }}
                 className={`w-full rounded-2xl border px-3 py-2 text-left text-sm transition ${
                   chatId === session.id
@@ -285,9 +309,18 @@ export default function Home() {
                 setChatId(activeChatId);
                 setMessages([]);
               }
+              const activeUserId = userId ?? getOrCreateUserId();
+              if (activeUserId && !userId) {
+                setUserId(activeUserId);
+              }
               await sendMessage(
                 { text: input },
-                { body: { chatId: activeChatId } }
+                {
+                  body: { chatId: activeChatId },
+                  headers: activeUserId
+                    ? { "x-user-id": activeUserId }
+                    : undefined,
+                }
               );
               setInput("");
               refreshSessions();

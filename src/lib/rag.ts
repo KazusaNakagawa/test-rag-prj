@@ -53,6 +53,14 @@ function getPlainText(richText?: RichTextItem[]) {
   return richText.map((item) => item.plain_text).join("");
 }
 
+function escapePostgrestLike(value: string) {
+  return value.replace(/([\\%_"])/g, "\\$1");
+}
+
+function quotePostgrestValue(value: string) {
+  return `"${value.replace(/(["\\])/g, "\\$1")}"`;
+}
+
 function extractKeywords(query: string) {
   const tokens =
     query.match(/[A-Za-z0-9][A-Za-z0-9+._-]*/g)?.map((token) => token.trim()) ??
@@ -242,7 +250,11 @@ export async function retrieveDocuments(query: string, topK = 5) {
   let keywordMatches: RagMatch[] = [];
   if (keywords.length > 0) {
     const orFilters = keywords
-      .map((keyword) => `title.ilike.%${keyword}%,content.ilike.%${keyword}%`)
+      .flatMap((keyword) => {
+        const escaped = escapePostgrestLike(keyword);
+        const pattern = quotePostgrestValue(`*${escaped}*`);
+        return [`title.ilike.${pattern}`, `content.ilike.${pattern}`];
+      })
       .join(",");
     const { data: keywordData, error: keywordError } = await supabase
       .from("documents")

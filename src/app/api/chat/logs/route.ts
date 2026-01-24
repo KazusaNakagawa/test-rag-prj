@@ -8,11 +8,31 @@ type ChatLogRow = {
   created_at: string;
 };
 
+function getUserId(req: Request) {
+  const userId = req.headers.get("x-user-id");
+  if (!userId) return null;
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      userId
+    );
+  return isUuid ? userId : null;
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const chatId = searchParams.get("chat_id");
   if (!chatId) {
-    return Response.json({ messages: [] });
+    return Response.json(
+      { messages: [], error: "chat_id is required." },
+      { status: 400 }
+    );
+  }
+  const userId = getUserId(req);
+  if (!userId) {
+    return Response.json(
+      { messages: [], error: "x-user-id header is required." },
+      { status: 400 }
+    );
   }
 
   let supabaseUrl: string;
@@ -33,6 +53,7 @@ export async function GET(req: Request) {
     .from("chat_logs")
     .select("id, user_message, assistant_message, created_at")
     .eq("chat_id", chatId)
+    .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(50);
 

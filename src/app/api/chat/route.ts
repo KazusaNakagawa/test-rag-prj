@@ -22,6 +22,16 @@ function getUserText(message: any) {
   return text || message?.content || message?.text || "";
 }
 
+function getUserId(req: Request) {
+  const userId = req.headers.get("x-user-id");
+  if (!userId) return null;
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      userId
+    );
+  return isUuid ? userId : null;
+}
+
 function truncateTitle(text: string, maxLength = 60) {
   const trimmed = text.trim();
   if (trimmed.length <= maxLength) return trimmed;
@@ -30,9 +40,22 @@ function truncateTitle(text: string, maxLength = 60) {
 
 export async function POST(req: Request) {
   const { messages, chatId } = await req.json();
+  const userId = getUserId(req);
+  if (!userId) {
+    return Response.json(
+      { error: "x-user-id header is required." },
+      { status: 400 }
+    );
+  }
   if (!chatId) {
     return Response.json(
       { error: "chatId is required to resume the session." },
+      { status: 400 }
+    );
+  }
+  if (!Array.isArray(messages)) {
+    return Response.json(
+      { error: "messages must be an array." },
       { status: 400 }
     );
   }
@@ -55,14 +78,18 @@ export async function POST(req: Request) {
     count: initialMatches.length,
     titles: initialMatches.map((match: any) => match.title ?? "Untitled"),
   });
-  await appendAppLog({
-    type: "chat_request",
-    requestId,
-    chatId: sessionId,
-    query,
-    messageCount: messages.length,
-    matchTitles: initialMatches.map((match: any) => match.title ?? "Untitled"),
-  });
+  try {
+    await appendAppLog({
+      type: "chat_request",
+      requestId,
+      chatId: sessionId,
+      query,
+      messageCount: messages.length,
+      matchTitles: initialMatches.map((match: any) => match.title ?? "Untitled"),
+    });
+  } catch (error) {
+    console.warn("[rag] failed to write chat_request log", error);
+  }
 
   const shouldEnableTools = initialMatches.length === 0;
 
@@ -77,6 +104,7 @@ export async function POST(req: Request) {
       .from("chat_logs")
       .select("user_message, assistant_message")
       .eq("chat_id", sessionId)
+      .eq("user_id", userId)
       .order("created_at", { ascending: true })
       .limit(50);
     historyMessages = (data ?? []).flatMap((row: any) => [
@@ -138,6 +166,7 @@ export async function POST(req: Request) {
       const usage = event.usage ?? {};
       const payload = {
         chat_id: sessionId,
+        user_id: userId,
         user_message: query,
         assistant_message: text,
         model: "gpt-4o-mini",
@@ -163,21 +192,24 @@ export async function POST(req: Request) {
           .from("chat_sessions")
           .select("id, title")
           .eq("id", sessionId)
+          .eq("user_id", userId)
           .maybeSingle();
         if (!existingSession) {
           await supabase
             .from("chat_sessions")
-            .insert({ id: sessionId, title: sessionTitle });
+            .insert({ id: sessionId, user_id: userId, title: sessionTitle });
         } else if (!existingSession.title && sessionTitle) {
           await supabase
             .from("chat_sessions")
             .update({ title: sessionTitle })
-            .eq("id", sessionId);
+            .eq("id", sessionId)
+            .eq("user_id", userId);
         }
         await supabase
           .from("chat_sessions")
           .update({ updated_at: new Date().toISOString() })
-          .eq("id", sessionId);
+          .eq("id", sessionId)
+          .eq("user_id", userId);
         const { error } = await supabase.from("chat_logs").insert(payload);
         if (error) {
           throw error;

@@ -52,6 +52,7 @@ $$;
 create table if not exists chat_logs (
   id uuid primary key default gen_random_uuid(),
   chat_id uuid,
+  user_id uuid,
   user_message text not null,
   assistant_message text not null,
   model text,
@@ -65,10 +66,13 @@ create table if not exists chat_logs (
 
 create table if not exists chat_sessions (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid,
   title text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
 
 create index if not exists chat_logs_chat_id_idx on chat_logs (chat_id);
+create index if not exists chat_logs_user_id_idx on chat_logs (user_id);
 create index if not exists chat_sessions_updated_at_idx on chat_sessions (updated_at);
+create index if not exists chat_sessions_user_id_idx on chat_sessions (user_id);
