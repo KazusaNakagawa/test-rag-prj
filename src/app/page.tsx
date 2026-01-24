@@ -5,6 +5,8 @@ import type { UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { Session } from "@supabase/supabase-js";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const prompts = [
   "Notionの中で最近のプロジェクト概要を教えて",
@@ -65,21 +67,14 @@ function generateChatId() {
   return id;
 }
 
-function getOrCreateUserId() {
-  if (typeof window === "undefined") return null;
-  const stored = window.localStorage.getItem("rag_user_id");
-  if (stored) return stored;
-  const nextId = generateChatId();
-  window.localStorage.setItem("rag_user_id", nextId);
-  return nextId;
-}
-
 export default function Home() {
   const { messages, sendMessage, status, setMessages } = useChat();
   const [input, setInput] = useState("");
   const [previewMarkdown, setPreviewMarkdown] = useState<string | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [sessions, setSessions] = useState<
     { id: string; title: string | null; updated_at: string | null }[]
   >([]);
@@ -103,17 +98,23 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const storedUserId = getOrCreateUserId();
-    if (storedUserId) {
-      setUserId(storedUserId);
-    }
+    supabaseBrowser.auth
+      .getSession()
+      .then(({ data }) => setSession(data.session ?? null));
+    const { data: authListener } = supabaseBrowser.auth.onAuthStateChange(
+      (_event, nextSession) => {
+        setSession(nextSession);
+      }
+    );
+    return () => authListener.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
     let isMounted = true;
-    if (!userId) return () => undefined;
+    const accessToken = session?.access_token;
+    if (!accessToken) return () => undefined;
     fetch("/api/chat/sessions", {
-      headers: { "x-user-id": userId },
+      headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then((response) => response.json())
       .then((payload) => {
@@ -128,13 +129,14 @@ export default function Home() {
     return () => {
       isMounted = false;
     };
-  }, [chatId, userId]);
+  }, [chatId, session?.access_token]);
 
   const loadChatLogs = (targetChatId: string) => {
-    if (!userId) return Promise.resolve();
+    const accessToken = session?.access_token;
+    if (!accessToken) return Promise.resolve();
     setIsLoadingHistory(true);
     return fetch(`/api/chat/logs?chat_id=${targetChatId}`, {
-      headers: { "x-user-id": userId },
+      headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then((response) => response.json())
       .then((payload) => {
@@ -146,17 +148,45 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!chatId || !userId) return;
+    if (!chatId || !session?.access_token) return;
     loadChatLogs(chatId);
-  }, [chatId, userId, setMessages]);
+  }, [chatId, session?.access_token, setMessages]);
 
   const refreshSessions = () =>
-    userId
-      ? fetch("/api/chat/sessions", { headers: { "x-user-id": userId } })
+    session?.access_token
+      ? fetch("/api/chat/sessions", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
           .then((response) => response.json())
           .then((payload) => setSessions(payload?.sessions ?? []))
           .catch(() => null)
       : Promise.resolve();
+
+  const handleSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAuthNotice(null);
+    if (!authEmail.trim()) {
+      setAuthNotice("Enter your email address.");
+      return;
+    }
+    const { error } = await supabaseBrowser.auth.signInWithOtp({
+      email: authEmail.trim(),
+      options: { emailRedirectTo: window.location.origin },
+    });
+    if (error) {
+      setAuthNotice(error.message);
+      return;
+    }
+    setAuthNotice("Magic link sent. Check your inbox.");
+  };
+
+  const handleSignOut = async () => {
+    setAuthNotice(null);
+    await supabaseBrowser.auth.signOut();
+    setSessions([]);
+    setChatId(null);
+    setMessages([]);
+  };
 
   const handleNewChat = () => {
     const nextChatId = generateChatId();
@@ -179,6 +209,37 @@ export default function Home() {
             >
               New
             </button>
+          </div>
+          <div className="rounded-2xl border border-stone-200 bg-white/80 p-3 text-xs text-stone-600">
+            {session?.user ? (
+              <div className="space-y-2">
+                <p className="truncate">{session.user.email ?? "Signed in"}</p>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-semibold text-stone-700 transition hover:border-[var(--accent)] hover:text-stone-950"
+                >
+                  Sign out
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSignIn} className="space-y-2">
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full rounded-full border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 outline-none"
+                />
+                <button
+                  type="submit"
+                  className="w-full rounded-full bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[var(--accent-dark)]"
+                >
+                  Send magic link
+                </button>
+              </form>
+            )}
+            {authNotice && <p className="mt-2 text-xs">{authNotice}</p>}
           </div>
           <div className="flex-1 space-y-2 overflow-y-auto pr-1">
             {sessions.length === 0 && (
@@ -303,23 +364,22 @@ export default function Home() {
             onSubmit={async (event) => {
               event.preventDefault();
               if (!input.trim()) return;
+              const accessToken = session?.access_token;
+              if (!accessToken) {
+                setAuthNotice("Sign in to start a chat.");
+                return;
+              }
               let activeChatId = chatId;
               if (!activeChatId) {
                 activeChatId = generateChatId();
                 setChatId(activeChatId);
                 setMessages([]);
               }
-              const activeUserId = userId ?? getOrCreateUserId();
-              if (activeUserId && !userId) {
-                setUserId(activeUserId);
-              }
               await sendMessage(
                 { text: input },
                 {
                   body: { chatId: activeChatId },
-                  headers: activeUserId
-                    ? { "x-user-id": activeUserId }
-                    : undefined,
+                  headers: { Authorization: `Bearer ${accessToken}` },
                 }
               );
               setInput("");
@@ -335,7 +395,7 @@ export default function Home() {
             />
             <button
               type="submit"
-              disabled={isBusy}
+              disabled={isBusy || !session?.access_token}
               className="rounded-full bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-dark)] disabled:opacity-60"
             >
               {isBusy ? "送信中..." : "送信"}

@@ -76,3 +76,37 @@ create index if not exists chat_logs_chat_id_idx on chat_logs (chat_id);
 create index if not exists chat_logs_user_id_idx on chat_logs (user_id);
 create index if not exists chat_sessions_updated_at_idx on chat_sessions (updated_at);
 create index if not exists chat_sessions_user_id_idx on chat_sessions (user_id);
+
+alter table chat_sessions enable row level security;
+alter table chat_logs enable row level security;
+
+drop policy if exists "chat_sessions_select_own" on chat_sessions;
+create policy "chat_sessions_select_own"
+on chat_sessions
+for select
+using (user_id = auth.uid());
+
+drop policy if exists "chat_sessions_insert_own" on chat_sessions;
+create policy "chat_sessions_insert_own"
+on chat_sessions
+for insert
+with check (user_id = auth.uid());
+
+drop policy if exists "chat_sessions_update_own" on chat_sessions;
+create policy "chat_sessions_update_own"
+on chat_sessions
+for update
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "chat_logs_select_own" on chat_logs;
+create policy "chat_logs_select_own"
+on chat_logs
+for select
+using (user_id = auth.uid());
+
+drop policy if exists "chat_logs_insert_own" on chat_logs;
+create policy "chat_logs_insert_own"
+on chat_logs
+for insert
+with check (user_id = auth.uid());

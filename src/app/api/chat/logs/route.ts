@@ -1,5 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
-import { requireEnv } from "@/lib/env";
+import { requireUser } from "@/lib/supabase-server";
 
 type ChatLogRow = {
   id: string;
@@ -7,16 +6,6 @@ type ChatLogRow = {
   assistant_message: string;
   created_at: string;
 };
-
-function getUserId(req: Request) {
-  const userId = req.headers.get("x-user-id");
-  if (!userId) return null;
-  const isUuid =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      userId
-    );
-  return isUuid ? userId : null;
-}
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -27,33 +16,16 @@ export async function GET(req: Request) {
       { status: 400 }
     );
   }
-  const userId = getUserId(req);
-  if (!userId) {
-    return Response.json(
-      { messages: [], error: "x-user-id header is required." },
-      { status: 400 }
-    );
+  const auth = await requireUser(req);
+  if ("error" in auth) {
+    return auth.error;
   }
 
-  let supabaseUrl: string;
-  let supabaseKey: string;
-
-  try {
-    supabaseUrl = requireEnv("SUPABASE_URL");
-    supabaseKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
-  } catch {
-    return Response.json({ messages: [] });
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: { persistSession: false },
-  });
-
-  const { data, error } = await supabase
+  const { data, error } = await auth.supabase
     .from("chat_logs")
     .select("id, user_message, assistant_message, created_at")
     .eq("chat_id", chatId)
-    .eq("user_id", userId)
+    .eq("user_id", auth.user.id)
     .order("created_at", { ascending: true })
     .limit(50);
 

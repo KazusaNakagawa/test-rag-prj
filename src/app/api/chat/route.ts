@@ -1,15 +1,14 @@
 import { openai } from "@ai-sdk/openai";
 import {
   streamText,
-  convertToModelMessages,
   jsonSchema,
   tool,
   stepCountIs,
 } from "ai";
+import type { ModelMessage } from "ai";
 import { formatDocumentsForPrompt, retrieveDocuments } from "@/lib/rag";
 import { appendAppLog } from "@/lib/app-logger";
-import { createClient } from "@supabase/supabase-js";
-import { requireEnv } from "@/lib/env";
+import { requireUser } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
@@ -22,16 +21,6 @@ function getUserText(message: any) {
   return text || message?.content || message?.text || "";
 }
 
-function getUserId(req: Request) {
-  const userId = req.headers.get("x-user-id");
-  if (!userId) return null;
-  const isUuid =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      userId
-    );
-  return isUuid ? userId : null;
-}
-
 function truncateTitle(text: string, maxLength = 60) {
   const trimmed = text.trim();
   if (trimmed.length <= maxLength) return trimmed;
@@ -40,12 +29,9 @@ function truncateTitle(text: string, maxLength = 60) {
 
 export async function POST(req: Request) {
   const { messages, chatId } = await req.json();
-  const userId = getUserId(req);
-  if (!userId) {
-    return Response.json(
-      { error: "x-user-id header is required." },
-      { status: 400 }
-    );
+  const auth = await requireUser(req);
+  if ("error" in auth) {
+    return auth.error;
   }
   if (!chatId) {
     return Response.json(
@@ -93,34 +79,31 @@ export async function POST(req: Request) {
 
   const shouldEnableTools = initialMatches.length === 0;
 
-  let historyMessages: { role: "user" | "assistant"; content: string }[] = [];
+  let historyMessages: ModelMessage[] = [];
   try {
-    const supabase = createClient(
-      requireEnv("SUPABASE_URL"),
-      requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-      { auth: { persistSession: false } }
-    );
-    const { data } = await supabase
+    const { data } = await auth.supabase
       .from("chat_logs")
       .select("user_message, assistant_message")
       .eq("chat_id", sessionId)
-      .eq("user_id", userId)
+      .eq("user_id", auth.user.id)
       .order("created_at", { ascending: true })
       .limit(50);
     historyMessages = (data ?? []).flatMap((row: any) => [
-      { role: "user", content: row.user_message },
-      { role: "assistant", content: row.assistant_message },
+      { role: "user", content: row.user_message } as const,
+      { role: "assistant", content: row.assistant_message } as const,
     ]);
   } catch {
     historyMessages = [];
   }
 
+  const modelMessages: ModelMessage[] = [
+    ...historyMessages,
+    ...(query ? ([{ role: "user", content: query }] as const) : []),
+  ];
+
   const result = streamText({
     model: openai("gpt-4o-mini"),
-    messages: [
-      ...historyMessages,
-      ...(query ? [{ role: "user", content: query }] : []),
-    ],
+    messages: modelMessages,
     system: [
       "You are a precise RAG assistant for Notion knowledge.",
       "Always ground answers in the provided context and cite the doc numbers when possible.",
@@ -163,17 +146,20 @@ export async function POST(req: Request) {
     stopWhen: stepCountIs(3),
     onFinish: async (event) => {
       const text = event.text ?? "";
-      const usage = event.usage ?? {};
+      const usage = event.usage;
+      const promptTokens = usage?.inputTokens ?? null;
+      const completionTokens = usage?.outputTokens ?? null;
+      const totalTokens = usage?.totalTokens ?? null;
       const payload = {
         chat_id: sessionId,
-        user_id: userId,
+        user_id: auth.user.id,
         user_message: query,
         assistant_message: text,
         model: "gpt-4o-mini",
         finish_reason: event.finishReason ?? null,
-        prompt_tokens: usage.promptTokens ?? null,
-        completion_tokens: usage.completionTokens ?? null,
-        total_tokens: usage.totalTokens ?? null,
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: totalTokens,
         metadata: {
           request_id: requestId,
           match_titles: initialMatches.map(
@@ -183,34 +169,29 @@ export async function POST(req: Request) {
       };
 
       try {
-        const supabase = createClient(
-          requireEnv("SUPABASE_URL"),
-          requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-          { auth: { persistSession: false } }
-        );
-        const { data: existingSession } = await supabase
+        const { data: existingSession } = await auth.supabase
           .from("chat_sessions")
           .select("id, title")
           .eq("id", sessionId)
-          .eq("user_id", userId)
+          .eq("user_id", auth.user.id)
           .maybeSingle();
         if (!existingSession) {
-          await supabase
+          await auth.supabase
             .from("chat_sessions")
-            .insert({ id: sessionId, user_id: userId, title: sessionTitle });
+            .insert({ id: sessionId, user_id: auth.user.id, title: sessionTitle });
         } else if (!existingSession.title && sessionTitle) {
-          await supabase
+          await auth.supabase
             .from("chat_sessions")
             .update({ title: sessionTitle })
             .eq("id", sessionId)
-            .eq("user_id", userId);
+            .eq("user_id", auth.user.id);
         }
-        await supabase
+        await auth.supabase
           .from("chat_sessions")
           .update({ updated_at: new Date().toISOString() })
           .eq("id", sessionId)
-          .eq("user_id", userId);
-        const { error } = await supabase.from("chat_logs").insert(payload);
+          .eq("user_id", auth.user.id);
+        const { error } = await auth.supabase.from("chat_logs").insert(payload);
         if (error) {
           throw error;
         }
@@ -226,9 +207,9 @@ export async function POST(req: Request) {
         type: "chat_response",
         requestId,
         finishReason: event.finishReason ?? null,
-        promptTokens: usage.promptTokens ?? null,
-        completionTokens: usage.completionTokens ?? null,
-        totalTokens: usage.totalTokens ?? null,
+        promptTokens,
+        completionTokens,
+        totalTokens,
       });
     },
   });
