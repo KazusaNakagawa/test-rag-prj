@@ -40,10 +40,40 @@ function renderMessageText(message: UIMessage) {
   return "表示できる内容がありません。";
 }
 
+function generateUuidV4() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0"));
+    return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex
+      .slice(6, 8)
+      .join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
+  }
+  return "";
+}
+
+function generateChatId() {
+  const id = generateUuidV4();
+  if (!id) {
+    throw new Error("Failed to generate chat ID.");
+  }
+  return id;
+}
+
 export default function Home() {
-  const { messages, sendMessage, status } = useChat();
+  const { messages, sendMessage, status, setMessages } = useChat();
   const [input, setInput] = useState("");
   const [previewMarkdown, setPreviewMarkdown] = useState<string | null>(null);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<
+    { id: string; title: string | null; updated_at: string | null }[]
+  >([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isBusy = status === "submitted" || status === "streaming";
 
@@ -62,9 +92,96 @@ export default function Home() {
       .catch(() => setPreviewMarkdown(null));
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/chat/sessions")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!isMounted) return;
+        const nextSessions = payload?.sessions ?? [];
+        setSessions(nextSessions);
+        if (!chatId && nextSessions.length > 0) {
+          setChatId(nextSessions[0].id);
+        }
+      })
+      .catch(() => null);
+    return () => {
+      isMounted = false;
+    };
+  }, [chatId]);
+
+  const loadChatLogs = (targetChatId: string) => {
+    setIsLoadingHistory(true);
+    return fetch(`/api/chat/logs?chat_id=${targetChatId}`)
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!payload?.messages) return;
+        setMessages(payload.messages);
+      })
+      .catch(() => null)
+      .finally(() => setIsLoadingHistory(false));
+  };
+
+  useEffect(() => {
+    if (!chatId) return;
+    loadChatLogs(chatId);
+  }, [chatId, setMessages]);
+
+  const refreshSessions = () =>
+    fetch("/api/chat/sessions")
+      .then((response) => response.json())
+      .then((payload) => setSessions(payload?.sessions ?? []))
+      .catch(() => null);
+
+  const handleNewChat = () => {
+    const nextChatId = generateChatId();
+    setChatId(nextChatId);
+    setMessages([]);
+  };
+
   return (
     <div className="min-h-screen px-6 pb-12 pt-10 text-foreground">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 lg:grid lg:grid-cols-[1.05fr_1.6fr]">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 lg:grid lg:grid-cols-[0.6fr_1.05fr_1.6fr]">
+        <aside className="flex flex-col gap-4 rounded-[28px] border border-stone-200 bg-white/70 p-5 shadow-[0_24px_70px_-50px_rgba(15,10,5,0.35)] backdrop-blur lg:h-[660px]">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+              Chats
+            </p>
+            <button
+              type="button"
+              onClick={handleNewChat}
+              className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-semibold text-stone-700 transition hover:border-[var(--accent)] hover:text-stone-950"
+            >
+              New
+            </button>
+          </div>
+          <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+            {sessions.length === 0 && (
+              <p className="text-xs text-stone-500">
+                まだチャット履歴がありません。
+              </p>
+            )}
+            {sessions.map((session) => (
+              <button
+                key={session.id}
+                type="button"
+                onClick={() => {
+                  setChatId(session.id);
+                  setMessages([]);
+                  loadChatLogs(session.id);
+                }}
+                className={`w-full rounded-2xl border px-3 py-2 text-left text-sm transition ${
+                  chatId === session.id
+                    ? "border-[var(--accent)] bg-[rgba(255,120,64,0.12)] text-stone-900"
+                    : "border-stone-200 bg-white/80 text-stone-700 hover:border-[var(--accent)]"
+                }`}
+              >
+                {session.title || "New chat"}
+              </button>
+            ))}
+          </div>
+        </aside>
+
         <section className="flex flex-col gap-6 rounded-[32px] border border-stone-200 bg-[rgba(255,253,248,0.8)] p-8 shadow-[0_24px_80px_-48px_rgba(15,10,5,0.35)] backdrop-blur">
           <div className="flex items-center gap-3 text-sm uppercase tracking-[0.3em] text-stone-500">
             <span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
@@ -113,7 +230,10 @@ export default function Home() {
             ref={containerRef}
             className="flex-1 space-y-3 overflow-y-auto rounded-[24px] border border-stone-200 bg-white/70 p-4"
           >
-            {messages.length === 0 && (
+            {isLoadingHistory && (
+              <div className="text-sm text-stone-500">履歴を読み込み中...</div>
+            )}
+            {!isLoadingHistory && messages.length === 0 && (
               <div className="space-y-3 text-sm text-stone-500">
                 <p>まだチャット履歴がありません。</p>
                 <p>右下の入力欄から質問を投げてください。</p>
@@ -159,8 +279,18 @@ export default function Home() {
             onSubmit={async (event) => {
               event.preventDefault();
               if (!input.trim()) return;
-              await sendMessage({ text: input });
+              let activeChatId = chatId;
+              if (!activeChatId) {
+                activeChatId = generateChatId();
+                setChatId(activeChatId);
+                setMessages([]);
+              }
+              await sendMessage(
+                { text: input },
+                { body: { chatId: activeChatId } }
+              );
               setInput("");
+              refreshSessions();
             }}
             className="mt-4 flex gap-3 rounded-2xl border border-stone-200 bg-white/90 p-3"
           >

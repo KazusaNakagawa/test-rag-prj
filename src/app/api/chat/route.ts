@@ -7,6 +7,9 @@ import {
   stepCountIs,
 } from "ai";
 import { formatDocumentsForPrompt, retrieveDocuments } from "@/lib/rag";
+import { appendAppLog } from "@/lib/app-logger";
+import { createClient } from "@supabase/supabase-js";
+import { requireEnv } from "@/lib/env";
 
 export const runtime = "nodejs";
 
@@ -19,26 +22,77 @@ function getUserText(message: any) {
   return text || message?.content || message?.text || "";
 }
 
+function truncateTitle(text: string, maxLength = 60) {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, maxLength)}…`;
+}
+
 export async function POST(req: Request) {
-  const { messages } = await req.json();
+  const { messages, chatId } = await req.json();
+  if (!chatId) {
+    return Response.json(
+      { error: "chatId is required to resume the session." },
+      { status: 400 }
+    );
+  }
+
   const latestUserMessage = [...messages]
     .reverse()
     .find((message: { role: string }) => message.role === "user");
+  const firstUserMessage = messages.find(
+    (message: { role: string }) => message.role === "user"
+  );
 
   const query = getUserText(latestUserMessage);
+  const sessionTitle = truncateTitle(getUserText(firstUserMessage) || "New chat");
+  const sessionId = chatId;
   const initialMatches = query ? await retrieveDocuments(query, 5) : [];
   const context = formatDocumentsForPrompt(initialMatches);
+  const requestId = crypto.randomUUID();
   console.info("[rag] initial matches", {
     query,
     count: initialMatches.length,
     titles: initialMatches.map((match: any) => match.title ?? "Untitled"),
   });
+  await appendAppLog({
+    type: "chat_request",
+    requestId,
+    chatId: sessionId,
+    query,
+    messageCount: messages.length,
+    matchTitles: initialMatches.map((match: any) => match.title ?? "Untitled"),
+  });
 
   const shouldEnableTools = initialMatches.length === 0;
 
+  let historyMessages: { role: "user" | "assistant"; content: string }[] = [];
+  try {
+    const supabase = createClient(
+      requireEnv("SUPABASE_URL"),
+      requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+      { auth: { persistSession: false } }
+    );
+    const { data } = await supabase
+      .from("chat_logs")
+      .select("user_message, assistant_message")
+      .eq("chat_id", sessionId)
+      .order("created_at", { ascending: true })
+      .limit(50);
+    historyMessages = (data ?? []).flatMap((row: any) => [
+      { role: "user", content: row.user_message },
+      { role: "assistant", content: row.assistant_message },
+    ]);
+  } catch {
+    historyMessages = [];
+  }
+
   const result = streamText({
     model: openai("gpt-4o-mini"),
-    messages: await convertToModelMessages(messages),
+    messages: [
+      ...historyMessages,
+      ...(query ? [{ role: "user", content: query }] : []),
+    ],
     system: [
       "You are a precise RAG assistant for Notion knowledge.",
       "Always ground answers in the provided context and cite the doc numbers when possible.",
@@ -79,6 +133,72 @@ export async function POST(req: Request) {
       : undefined,
     toolChoice: shouldEnableTools ? "auto" : "none",
     stopWhen: stepCountIs(3),
+    onFinish: async (event) => {
+      const text = event.text ?? "";
+      const usage = event.usage ?? {};
+      const payload = {
+        chat_id: sessionId,
+        user_message: query,
+        assistant_message: text,
+        model: "gpt-4o-mini",
+        finish_reason: event.finishReason ?? null,
+        prompt_tokens: usage.promptTokens ?? null,
+        completion_tokens: usage.completionTokens ?? null,
+        total_tokens: usage.totalTokens ?? null,
+        metadata: {
+          request_id: requestId,
+          match_titles: initialMatches.map(
+            (match: any) => match.title ?? "Untitled"
+          ),
+        },
+      };
+
+      try {
+        const supabase = createClient(
+          requireEnv("SUPABASE_URL"),
+          requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+          { auth: { persistSession: false } }
+        );
+        const { data: existingSession } = await supabase
+          .from("chat_sessions")
+          .select("id, title")
+          .eq("id", sessionId)
+          .maybeSingle();
+        if (!existingSession) {
+          await supabase
+            .from("chat_sessions")
+            .insert({ id: sessionId, title: sessionTitle });
+        } else if (!existingSession.title && sessionTitle) {
+          await supabase
+            .from("chat_sessions")
+            .update({ title: sessionTitle })
+            .eq("id", sessionId);
+        }
+        await supabase
+          .from("chat_sessions")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", sessionId);
+        const { error } = await supabase.from("chat_logs").insert(payload);
+        if (error) {
+          throw error;
+        }
+      } catch (error) {
+        await appendAppLog({
+          type: "chat_log_error",
+          requestId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      await appendAppLog({
+        type: "chat_response",
+        requestId,
+        finishReason: event.finishReason ?? null,
+        promptTokens: usage.promptTokens ?? null,
+        completionTokens: usage.completionTokens ?? null,
+        totalTokens: usage.totalTokens ?? null,
+      });
+    },
   });
 
   return result.toUIMessageStreamResponse();

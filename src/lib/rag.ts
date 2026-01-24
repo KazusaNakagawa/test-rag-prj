@@ -53,6 +53,13 @@ function getPlainText(richText?: RichTextItem[]) {
   return richText.map((item) => item.plain_text).join("");
 }
 
+function extractKeywords(query: string) {
+  const tokens =
+    query.match(/[A-Za-z0-9][A-Za-z0-9+._-]*/g)?.map((token) => token.trim()) ??
+    [];
+  return Array.from(new Set(tokens.filter(Boolean))).slice(0, 6);
+}
+
 function chunkText(text: string, chunkSize = 1200) {
   if (text.length <= chunkSize) {
     return [text];
@@ -139,6 +146,20 @@ function getPageTitle(page: any) {
   return getPlainText(titleProperty?.title) || "Untitled";
 }
 
+function scoreByKeywords(match: RagMatch, keywords: string[]) {
+  if (keywords.length === 0) return 0;
+  const title = (match.title ?? "").toLowerCase();
+  const content = match.content.toLowerCase();
+  let score = 0;
+  for (const keyword of keywords) {
+    const needle = keyword.toLowerCase();
+    if (!needle) continue;
+    if (title.includes(needle)) score += 2;
+    if (content.includes(needle)) score += 1;
+  }
+  return score;
+}
+
 async function retrieveFromNotion(query: string, topK: number) {
   const notionApiKey = requireEnv("NOTION_API_KEY");
   const databaseId = process.env.NOTION_DATABASE_ID;
@@ -199,6 +220,8 @@ export async function retrieveDocuments(query: string, topK = 5) {
     return retrieveFromNotion(query, topK);
   }
 
+  const keywords = extractKeywords(query);
+
   const embeddingResponse = await openai.embeddings.create({
     model: "text-embedding-3-small",
     input: query,
@@ -207,14 +230,54 @@ export async function retrieveDocuments(query: string, topK = 5) {
   const [embedding] = embeddingResponse.data;
   const { data, error } = await supabase.rpc("match_documents", {
     query_embedding: embedding.embedding,
-    match_count: topK,
+    match_count: Math.max(topK, 12),
   });
 
   if (error) {
     throw new Error(`Supabase search failed: ${error.message}`);
   }
 
-  return (data ?? []) as RagMatch[];
+  const vectorMatches = (data ?? []) as RagMatch[];
+
+  let keywordMatches: RagMatch[] = [];
+  if (keywords.length > 0) {
+    const orFilters = keywords
+      .map((keyword) => `title.ilike.%${keyword}%,content.ilike.%${keyword}%`)
+      .join(",");
+    const { data: keywordData, error: keywordError } = await supabase
+      .from("documents")
+      .select(
+        "id, source, source_id, title, content, chunk_index, url, metadata"
+      )
+      .or(orFilters)
+      .limit(Math.max(topK, 12));
+    if (keywordError) {
+      throw new Error(`Supabase keyword search failed: ${keywordError.message}`);
+    }
+    keywordMatches = (keywordData ?? []).map((row: any) => ({
+      ...row,
+      similarity: 0,
+    }));
+  }
+
+  const seen = new Set<string>();
+  const merged: RagMatch[] = [];
+  for (const match of [...vectorMatches, ...keywordMatches]) {
+    if (seen.has(match.id)) continue;
+    seen.add(match.id);
+    merged.push(match);
+  }
+
+  if (keywords.length > 0) {
+    merged.sort((a, b) => {
+      const scoreDiff =
+        scoreByKeywords(b, keywords) - scoreByKeywords(a, keywords);
+      if (scoreDiff !== 0) return scoreDiff;
+      return b.similarity - a.similarity;
+    });
+  }
+
+  return merged.slice(0, topK);
 }
 
 export function formatDocumentsForPrompt(matches: RagMatch[]) {
