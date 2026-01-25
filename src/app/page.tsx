@@ -11,6 +11,9 @@ import LandingHero from "@/components/LandingHero";
 import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
 
+/**
+ * Extract a displayable string from a chat message, including tool call labels.
+ */
 function renderMessageText(message: UIMessage) {
   const parts = message.parts ?? [];
   const text = parts
@@ -39,6 +42,9 @@ function renderMessageText(message: UIMessage) {
   return "表示できる内容がありません。";
 }
 
+/**
+ * Create a UUID v4 using the Web Crypto API, with a fallback implementation.
+ */
 function generateUuidV4() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -56,6 +62,9 @@ function generateUuidV4() {
   return "";
 }
 
+/**
+ * Generate a chat session id and fail fast if it cannot be created.
+ */
 function generateChatId() {
   const id = generateUuidV4();
   if (!id) {
@@ -64,6 +73,9 @@ function generateChatId() {
   return id;
 }
 
+/**
+ * Main chat page: handles auth state, chat sessions, and layout rendering.
+ */
 export default function Home() {
   const { messages, sendMessage, status, setMessages } = useChat();
   const [input, setInput] = useState("");
@@ -155,6 +167,9 @@ export default function Home() {
     };
   }, [chatId, session?.access_token]);
 
+  /**
+   * Fetch and hydrate messages for a selected chat session.
+   */
   const loadChatLogs = (targetChatId: string) => {
     const accessToken = session?.access_token;
     if (!accessToken) return Promise.resolve();
@@ -176,6 +191,9 @@ export default function Home() {
     loadChatLogs(chatId);
   }, [chatId, session?.access_token, setMessages]);
 
+  /**
+   * Refresh the list of chat sessions for the signed-in user.
+   */
   const refreshSessions = () =>
     session?.access_token
       ? fetch("/api/chat/sessions", {
@@ -186,6 +204,9 @@ export default function Home() {
           .catch(() => null)
       : Promise.resolve();
 
+  /**
+   * Trigger Supabase magic-link sign-in with basic client-side validation.
+   */
   const handleSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setAuthNotice(null);
@@ -209,6 +230,9 @@ export default function Home() {
     setIsAuthModalOpen(true);
   };
 
+  /**
+   * Clear auth state and reset chat session data on sign-out.
+   */
   const handleSignOut = async () => {
     setAuthNotice(null);
     await supabaseBrowser.auth.signOut();
@@ -217,6 +241,9 @@ export default function Home() {
     setMessages([]);
   };
 
+  /**
+   * Start a new empty chat session with a fresh id.
+   */
   const handleNewChat = () => {
     const nextChatId = generateChatId();
     setChatId(nextChatId);

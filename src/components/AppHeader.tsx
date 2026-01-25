@@ -12,6 +12,9 @@ type AppHeaderProps = {
   onSignOut: () => void;
 };
 
+/**
+ * Top navigation bar with branding and auth controls.
+ */
 export default function AppHeader({
   session,
   authEmail,

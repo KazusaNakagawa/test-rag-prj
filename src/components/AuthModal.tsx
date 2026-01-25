@@ -4,6 +4,9 @@ type AuthModalProps = {
   onClose: () => void;
 };
 
+/**
+ * Modal prompt shown after starting magic-link sign-in.
+ */
 export default function AuthModal({ open, notice, onClose }: AuthModalProps) {
   if (!open) return null;
 

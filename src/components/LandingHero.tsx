@@ -1,3 +1,6 @@
+/**
+ * Marketing hero shown when the user is signed out.
+ */
 export default function LandingHero() {
   return (
     <main className="mx-auto flex min-h-[calc(100vh-120px)] w-full max-w-4xl flex-col items-center justify-center px-6 pb-16 text-center">

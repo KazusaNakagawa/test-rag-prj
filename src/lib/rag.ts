@@ -28,6 +28,9 @@ let supabaseClient:
   | null
   | undefined = undefined;
 
+/**
+ * Lazily initialize a Supabase client for server-side queries.
+ */
 function getSupabaseClient() {
   if (supabaseClient !== undefined) {
     return supabaseClient;
@@ -48,19 +51,31 @@ function getSupabaseClient() {
   return supabaseClient;
 }
 
+/**
+ * Collapse Notion rich text items into a plain string.
+ */
 function getPlainText(richText?: RichTextItem[]) {
   if (!richText) return "";
   return richText.map((item) => item.plain_text).join("");
 }
 
+/**
+ * Escape PostgREST LIKE wildcards and quotes for ilike filters.
+ */
 function escapePostgrestLike(value: string) {
   return value.replace(/([\\%_"])/g, "\\$1");
 }
 
+/**
+ * Wrap a PostgREST filter value in quotes with escaping.
+ */
 function quotePostgrestValue(value: string) {
   return `"${value.replace(/(["\\])/g, "\\$1")}"`;
 }
 
+/**
+ * Extract short keyword tokens from a query for fallback text search.
+ */
 function extractKeywords(query: string) {
   const tokens =
     query.match(/[A-Za-z0-9][A-Za-z0-9+._-]*/g)?.map((token) => token.trim()) ??
@@ -68,6 +83,9 @@ function extractKeywords(query: string) {
   return Array.from(new Set(tokens.filter(Boolean))).slice(0, 6);
 }
 
+/**
+ * Split long text into trimmed chunks for indexing or prompt use.
+ */
 function chunkText(text: string, chunkSize = 1200) {
   if (text.length <= chunkSize) {
     return [text];
@@ -79,6 +97,9 @@ function chunkText(text: string, chunkSize = 1200) {
   return chunks.filter(Boolean);
 }
 
+/**
+ * List all child blocks for a Notion block, following pagination.
+ */
 async function listBlockChildren(notion: Client, blockId: string) {
   const blocks: any[] = [];
   let cursor: string | undefined;
@@ -94,6 +115,9 @@ async function listBlockChildren(notion: Client, blockId: string) {
   return blocks;
 }
 
+/**
+ * Extract the readable text from a supported Notion block shape.
+ */
 function extractBlockText(block: any) {
   const type = block.type;
   const payload = block[type];
@@ -126,6 +150,9 @@ function extractBlockText(block: any) {
   return "";
 }
 
+/**
+ * Recursively collect text from a Notion block tree.
+ */
 async function collectBlockText(notion: Client, blockId: string) {
   const blocks = await listBlockChildren(notion, blockId);
   const texts: string[] = [];
@@ -145,6 +172,9 @@ async function collectBlockText(notion: Client, blockId: string) {
   return texts;
 }
 
+/**
+ * Read the Notion page title, falling back to a default label.
+ */
 function getPageTitle(page: any) {
   const properties = page.properties ?? {};
   const titleProperty = Object.values(properties).find(
@@ -154,6 +184,9 @@ function getPageTitle(page: any) {
   return getPlainText(titleProperty?.title) || "Untitled";
 }
 
+/**
+ * Score a match by keyword presence to aid secondary ranking.
+ */
 function scoreByKeywords(match: RagMatch, keywords: string[]) {
   if (keywords.length === 0) return 0;
   const title = (match.title ?? "").toLowerCase();
@@ -168,6 +201,9 @@ function scoreByKeywords(match: RagMatch, keywords: string[]) {
   return score;
 }
 
+/**
+ * Retrieve top documents directly from Notion when Supabase is unavailable.
+ */
 async function retrieveFromNotion(query: string, topK: number) {
   const notionApiKey = requireEnv("NOTION_API_KEY");
   const databaseId = process.env.NOTION_DATABASE_ID;
@@ -222,6 +258,9 @@ async function retrieveFromNotion(query: string, topK: number) {
   return matches;
 }
 
+/**
+ * Retrieve documents from vector search and keyword fallback.
+ */
 export async function retrieveDocuments(query: string, topK = 5) {
   const supabase = getSupabaseClient();
   if (!supabase) {
@@ -292,6 +331,9 @@ export async function retrieveDocuments(query: string, topK = 5) {
   return merged.slice(0, topK);
 }
 
+/**
+ * Format retrieved documents for inclusion in the LLM system prompt.
+ */
 export function formatDocumentsForPrompt(matches: RagMatch[]) {
   if (matches.length === 0) {
     return "No relevant documents were found.";

@@ -6,6 +6,9 @@ type ChatSessionRow = {
   updated_at: string | null;
 };
 
+/**
+ * List recent chat sessions for the signed-in user.
+ */
 export async function GET(req: Request) {
   const auth = await requireUser(req);
   if ("error" in auth) {

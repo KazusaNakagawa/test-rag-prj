@@ -16,6 +16,9 @@ type ChatPanelProps = {
   canSend: boolean;
 };
 
+/**
+ * Chat timeline and composer panel.
+ */
 export default function ChatPanel({
   containerRef,
   isLoadingHistory,

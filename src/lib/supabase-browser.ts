@@ -7,4 +7,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
 }
 
+/**
+ * Supabase client configured for browser-side auth/session access.
+ */
 export const supabaseBrowser = createClient(supabaseUrl, supabaseAnonKey);

@@ -6,6 +6,9 @@ type LogEntry = Record<string, unknown>;
 const logDir = path.join(process.cwd(), "log");
 const logFile = path.join(logDir, "app.log");
 
+/**
+ * Append a structured JSON log entry to the local log file.
+ */
 export async function appendAppLog(entry: LogEntry) {
   await mkdir(logDir, { recursive: true });
   const payload = {

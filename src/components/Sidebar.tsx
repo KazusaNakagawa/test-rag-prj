@@ -7,6 +7,9 @@ type SidebarProps = {
   onNewChat: () => void;
 };
 
+/**
+ * Left sidebar listing chat sessions and quick actions.
+ */
 export default function Sidebar({
   sessions,
   chatId,
