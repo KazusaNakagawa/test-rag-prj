@@ -203,14 +203,22 @@ export async function POST(req: Request) {
         });
       }
 
-      await appendAppLog({
-        type: "chat_response",
-        requestId,
-        finishReason: event.finishReason ?? null,
-        promptTokens,
-        completionTokens,
-        totalTokens,
-      });
+      try {
+        await appendAppLog({
+          type: "chat_response",
+          requestId,
+          finishReason: event.finishReason ?? null,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+        });
+      } catch (error) {
+        await appendAppLog({
+          type: "chat_log_error",
+          requestId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     },
   });
 
