@@ -45,3 +45,8 @@ output
 
 # app logs
 log
+
+# supabase local
+supabase/.branches/
+supabase/.temp/
+supabase/config.toml

@@ -82,6 +82,23 @@ Cause:
 Fix:
 - Wait for reset, use a different email, or configure SMTP.
 - Audit logs: Supabase Dashboard -> Authentication -> Audit Logs.
+- For local development, prefer one of these:
+  - Run Supabase locally (CLI) and open the magic link via Mailpit.
+  - Disable email confirmations locally and use password sign-in.
+  - Use an external SMTP provider with a free tier to avoid the built-in cap.
+- Alternative providers (OAuth, passkeys, etc.) are possible but require
+  dashboard setup and client-side changes.
+- Step-by-step: [Local auth alternatives](auth-local-dev.md)
+
+## Supabase CLI on Rancher Desktop
+
+Symptoms:
+- `supabase_vector_*` container is `unhealthy`
+- Vector logs show Docker socket connection refused
+
+Fix:
+- Point `/var/run/docker.sock` to `~/.rd/docker.sock` or disable analytics.
+- Step-by-step: [Rancher Desktop setup](rancher-desktop-supabase-local.md)
 
 ## Auth / RLS migration
 
@@ -91,4 +108,3 @@ Symptoms:
 Fix:
 - Use Supabase Auth with anon key + JWT on API requests.
 - Ensure tables have `user_id` and policies for `auth.uid()`.
-
