@@ -12,6 +12,9 @@ import { requireUser } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
+/**
+ * Extract the user text content from a chat message payload.
+ */
 function getUserText(message: any) {
   const parts = message?.parts ?? [];
   const text = parts
@@ -21,12 +24,18 @@ function getUserText(message: any) {
   return text || message?.content || message?.text || "";
 }
 
+/**
+ * Trim and shorten a proposed session title to a safe length.
+ */
 function truncateTitle(text: string, maxLength = 60) {
   const trimmed = text.trim();
   if (trimmed.length <= maxLength) return trimmed;
   return `${trimmed.slice(0, maxLength)}…`;
 }
 
+/**
+ * Handle streaming chat responses with RAG context and persistence.
+ */
 export async function POST(req: Request) {
   const { messages, chatId } = await req.json();
   const auth = await requireUser(req);

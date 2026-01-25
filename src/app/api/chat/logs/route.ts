@@ -7,6 +7,9 @@ type ChatLogRow = {
   created_at: string;
 };
 
+/**
+ * Return chat history for a session as UI messages.
+ */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const chatId = searchParams.get("chat_id");

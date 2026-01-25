@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   description: "Notion-powered RAG and agent playground",
 };
 
+/**
+ * Root layout that wires up global fonts and page chrome.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
