@@ -11,15 +11,15 @@ export default function AuthModal({ open, notice, onClose }: AuthModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/60 px-6">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-stone-950/95 p-6 text-sm text-stone-100 shadow-[0_30px_70px_-40px_rgba(0,0,0,0.8)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-stone-400">
+    <div className="fixed inset-0 z-20 flex items-center justify-center bg-[var(--overlay)] px-6">
+      <div className="w-full max-w-md rounded-3xl border border-[var(--panel-border)] bg-[var(--panel)] p-6 text-sm text-[var(--text-primary)] shadow-[0_30px_70px_-40px_rgba(0,0,0,0.6)] backdrop-blur">
+        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--text-subtle)]">
           Sign in
         </p>
-        <h2 className="mt-3 text-xl font-semibold text-white">
+        <h2 className="mt-3 text-xl font-semibold text-[var(--text-primary)]">
           メールを確認してください
         </h2>
-        <p className="mt-3 text-sm text-stone-300">
+        <p className="mt-3 text-sm text-[var(--text-muted)]">
           {notice ??
             "受信箱のリンクを開いてください。同じブラウザで開くと、この画面が自動でログイン状態に切り替わります。"}
         </p>
@@ -27,7 +27,7 @@ export default function AuthModal({ open, notice, onClose }: AuthModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-white/10 px-4 py-2 text-xs font-semibold text-stone-200 transition hover:border-white/30 hover:text-white"
+            className="rounded-full border border-[var(--panel-border)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--panel-border-strong)]"
           >
             閉じる
           </button>

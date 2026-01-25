@@ -32,23 +32,23 @@ export default function ChatPanel({
   canSend,
 }: ChatPanelProps) {
   return (
-    <section className="flex h-[70vh] min-h-[520px] flex-1 flex-col rounded-[28px] border border-white/10 bg-stone-900/80 p-5 shadow-[0_24px_70px_-50px_rgba(0,0,0,0.7)] backdrop-blur">
+    <section className="flex h-[70vh] min-h-[520px] flex-1 flex-col rounded-[28px] border border-[var(--panel-border)] bg-[var(--panel)] p-5 text-[var(--text-primary)] shadow-[0_24px_70px_-50px_rgba(0,0,0,0.5)] backdrop-blur">
       <div
         ref={containerRef}
-        className="flex-1 space-y-3 overflow-y-auto rounded-[24px] border border-white/10 bg-black/30 p-4"
+        className="flex-1 space-y-3 overflow-y-auto rounded-[24px] border border-[var(--panel-border)] bg-[var(--panel-strong)] p-4"
       >
         {isLoadingHistory && (
-          <div className="text-sm text-stone-400">履歴を読み込み中...</div>
+          <div className="text-sm text-[var(--text-muted)]">履歴を読み込み中...</div>
         )}
         {!isLoadingHistory && messages.length === 0 && (
-          <div className="space-y-3 text-sm text-stone-400">
+          <div className="space-y-3 text-sm text-[var(--text-muted)]">
             <p>まだチャット履歴がありません。</p>
             <p>右下の入力欄から質問を投げてください。</p>
           </div>
         )}
         {previewMarkdown && (
           <div className="flex justify-start">
-            <div className="w-full rounded-2xl bg-white/10 px-4 py-2 text-sm leading-relaxed text-stone-100 shadow-sm">
+            <div className="w-full rounded-2xl bg-[var(--panel-muted)] px-4 py-2 text-sm leading-relaxed text-[var(--text-primary)] shadow-sm">
               <div className="markdown markdown-body">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {previewMarkdown}
@@ -66,7 +66,7 @@ export default function ChatPanel({
               className={`rounded-2xl px-4 py-2 text-sm leading-relaxed shadow-sm ${
                 message.role === "user"
                   ? "max-w-[85%] whitespace-pre-wrap bg-[var(--accent)] text-white"
-                  : "w-full whitespace-normal bg-white/10 text-stone-100"
+                  : "w-full whitespace-normal bg-[var(--panel-muted)] text-[var(--text-primary)]"
               }`}
             >
               {message.role === "assistant" ? (
@@ -90,13 +90,13 @@ export default function ChatPanel({
           }
           onSubmit(event);
         }}
-        className="mt-4 flex gap-3 rounded-2xl border border-white/10 bg-white/5 p-3"
+        className="mt-4 flex gap-3 rounded-2xl border border-[var(--panel-border)] bg-[var(--panel-muted)] p-3"
       >
         <input
           value={input}
           onChange={(event) => onInputChange(event.target.value)}
           placeholder="Notionの知識を検索して質問する"
-          className="flex-1 bg-transparent px-3 text-sm text-stone-100 outline-none placeholder:text-stone-500"
+          className="flex-1 bg-transparent px-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-subtle)]"
         />
         <button
           type="submit"
@@ -106,7 +106,7 @@ export default function ChatPanel({
           {isBusy ? "送信中..." : "送信"}
         </button>
       </form>
-      <p className="mt-3 text-xs text-stone-400">
+      <p className="mt-3 text-xs text-[var(--text-subtle)]">
         モデルは回答時にNotionデータを検索します。重要な情報は引用番号で確認してください。
       </p>
     </section>

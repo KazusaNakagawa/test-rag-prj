@@ -5,11 +5,13 @@ import type { UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useThemeMode } from "@/hooks/useThemeMode";
 import AppHeader from "@/components/AppHeader";
 import AuthModal from "@/components/AuthModal";
 import LandingHero from "@/components/LandingHero";
 import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
+import SettingsModal from "@/components/SettingsModal";
 
 /**
  * Extract a displayable string from a chat message, including tool call labels.
@@ -85,12 +87,14 @@ export default function Home() {
   const [authEmail, setAuthEmail] = useState("");
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [sessions, setSessions] = useState<
     { id: string; title: string | null; updated_at: string | null }[]
   >([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isBusy = status === "submitted" || status === "streaming";
+  const { mode: themeMode, setMode: setThemeMode } = useThemeMode();
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -251,18 +255,25 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#2a2d33,_#16181c_55%,_#0f1115)] text-stone-100">
+    <div className="min-h-screen bg-[var(--page-bg)] text-[var(--text-primary)]">
       <AppHeader
         session={session}
         authEmail={authEmail}
         onAuthEmailChange={setAuthEmail}
         onSignIn={handleSignIn}
         onSignOut={handleSignOut}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
       <AuthModal
         open={isAuthModalOpen}
         notice={authNotice}
         onClose={() => setIsAuthModalOpen(false)}
+      />
+      <SettingsModal
+        open={isSettingsOpen}
+        mode={themeMode}
+        onModeChange={setThemeMode}
+        onClose={() => setIsSettingsOpen(false)}
       />
 
       {!session?.user ? (
@@ -278,6 +289,7 @@ export default function Home() {
                 setChatId(id);
                 setMessages([]);
               }}
+              onOpenSettings={() => setIsSettingsOpen(true)}
             />
 
             <ChatPanel

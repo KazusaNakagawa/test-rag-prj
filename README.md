@@ -18,6 +18,12 @@ cp .env.example .env.local
 npm run ingest:notion
 ```
 
+`.env.local` を使う場合は以下のように実行します。
+
+```bash
+npm run ingest:notion -f .env.local
+```
+
 4. 開発サーバー起動
 
 ```bash
@@ -29,6 +35,7 @@ npm run dev
 Vercelにデプロイする場合は、以下の環境変数を設定してください。
 
 - `OPENAI_API_KEY`
+- `OPENAI_CHAT_MODEL` (optional, default: `gpt-4o-mini`)
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
