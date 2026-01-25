@@ -3,16 +3,13 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import type { Session } from "@supabase/supabase-js";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-
-const prompts = [
-  "Notionの中で最近のプロジェクト概要を教えて",
-  "自分の強みを3つに要約して",
-  "学習メモから今月の改善点を抽出して",
-];
+import AppHeader from "@/components/AppHeader";
+import AuthModal from "@/components/AuthModal";
+import LandingHero from "@/components/LandingHero";
+import Sidebar from "@/components/Sidebar";
+import ChatPanel from "@/components/ChatPanel";
 
 function renderMessageText(message: UIMessage) {
   const parts = message.parts ?? [];
@@ -75,6 +72,7 @@ export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [sessions, setSessions] = useState<
     { id: string; title: string | null; updated_at: string | null }[]
   >([]);
@@ -98,16 +96,42 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    supabaseBrowser.auth
-      .getSession()
-      .then(({ data }) => setSession(data.session ?? null));
+    const refreshSession = () =>
+      supabaseBrowser.auth
+        .getSession()
+        .then(({ data }) => setSession(data.session ?? null))
+        .catch(() => null);
+
+    refreshSession();
+
     const { data: authListener } = supabaseBrowser.auth.onAuthStateChange(
       (_event, nextSession) => {
         setSession(nextSession);
       }
     );
-    return () => authListener.subscription.unsubscribe();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        refreshSession();
+      }
+    };
+
+    window.addEventListener("focus", refreshSession);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      authListener.subscription.unsubscribe();
+      window.removeEventListener("focus", refreshSession);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
+
+  useEffect(() => {
+    if (session?.user) {
+      setIsAuthModalOpen(false);
+      setAuthNotice(null);
+    }
+  }, [session?.user]);
 
   useEffect(() => {
     let isMounted = true;
@@ -166,18 +190,23 @@ export default function Home() {
     event.preventDefault();
     setAuthNotice(null);
     if (!authEmail.trim()) {
-      setAuthNotice("Enter your email address.");
+      setAuthNotice("メールアドレスを入力してください。");
+      setIsAuthModalOpen(true);
       return;
     }
     const { error } = await supabaseBrowser.auth.signInWithOtp({
       email: authEmail.trim(),
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: window.location.origin + window.location.pathname },
     });
     if (error) {
       setAuthNotice(error.message);
+      setIsAuthModalOpen(true);
       return;
     }
-    setAuthNotice("Magic link sent. Check your inbox.");
+    setAuthNotice(
+      "メールを送信しました。受信箱のリンクを開いてログインを完了してください。"
+    );
+    setIsAuthModalOpen(true);
   };
 
   const handleSignOut = async () => {
@@ -195,217 +224,73 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen px-6 pb-12 pt-10 text-foreground">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 lg:grid lg:grid-cols-[0.6fr_1.05fr_1.6fr]">
-        <aside className="flex flex-col gap-4 rounded-[28px] border border-stone-200 bg-white/70 p-5 shadow-[0_24px_70px_-50px_rgba(15,10,5,0.35)] backdrop-blur lg:h-[660px]">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-              Chats
-            </p>
-            <button
-              type="button"
-              onClick={handleNewChat}
-              className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-semibold text-stone-700 transition hover:border-[var(--accent)] hover:text-stone-950"
-            >
-              New
-            </button>
-          </div>
-          <div className="rounded-2xl border border-stone-200 bg-white/80 p-3 text-xs text-stone-600">
-            {session?.user ? (
-              <div className="space-y-2">
-                <p className="truncate">{session.user.email ?? "Signed in"}</p>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-semibold text-stone-700 transition hover:border-[var(--accent)] hover:text-stone-950"
-                >
-                  Sign out
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleSignIn} className="space-y-2">
-                <input
-                  type="email"
-                  value={authEmail}
-                  onChange={(event) => setAuthEmail(event.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full rounded-full border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 outline-none"
-                />
-                <button
-                  type="submit"
-                  className="w-full rounded-full bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[var(--accent-dark)]"
-                >
-                  Send magic link
-                </button>
-              </form>
-            )}
-            {authNotice && <p className="mt-2 text-xs">{authNotice}</p>}
-          </div>
-          <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-            {sessions.length === 0 && (
-              <p className="text-xs text-stone-500">
-                まだチャット履歴がありません。
-              </p>
-            )}
-            {sessions.map((session) => (
-              <button
-                key={session.id}
-                type="button"
-                onClick={() => {
-                  setChatId(session.id);
-                  setMessages([]);
-                }}
-                className={`w-full rounded-2xl border px-3 py-2 text-left text-sm transition ${
-                  chatId === session.id
-                    ? "border-[var(--accent)] bg-[rgba(255,120,64,0.12)] text-stone-900"
-                    : "border-stone-200 bg-white/80 text-stone-700 hover:border-[var(--accent)]"
-                }`}
-              >
-                {session.title || "New chat"}
-              </button>
-            ))}
-          </div>
-        </aside>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#2a2d33,_#16181c_55%,_#0f1115)] text-stone-100">
+      <AppHeader
+        session={session}
+        authEmail={authEmail}
+        onAuthEmailChange={setAuthEmail}
+        onSignIn={handleSignIn}
+        onSignOut={handleSignOut}
+      />
+      <AuthModal
+        open={isAuthModalOpen}
+        notice={authNotice}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
 
-        <section className="flex flex-col gap-6 rounded-[32px] border border-stone-200 bg-[rgba(255,253,248,0.8)] p-8 shadow-[0_24px_80px_-48px_rgba(15,10,5,0.35)] backdrop-blur">
-          <div className="flex items-center gap-3 text-sm uppercase tracking-[0.3em] text-stone-500">
-            <span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
-            Notion RAG Agent
-          </div>
-          <div className="space-y-4">
-            <h1 className="font-serif text-4xl leading-tight text-stone-950 md:text-5xl">
-              自分の知見で答える
-              <br />
-              パーソナルAIラボ
-            </h1>
-            <p className="text-base leading-relaxed text-stone-600">
-              Notionの知識ベースを検索し、関連情報を引用しながら返答するRAG +
-              エージェント構成です。質問が曖昧なときは、必要な情報を聞き返します。
-            </p>
-          </div>
-          <div className="space-y-3 rounded-2xl border border-stone-200 bg-white/80 p-5 text-sm text-stone-600">
-            <p className="font-semibold text-stone-900">利用フロー</p>
-            <ol className="list-decimal space-y-2 pl-5">
-              <li>NotionからETLを実行してベクター保存</li>
-              <li>検索 + 生成を組み合わせて回答</li>
-              <li>必要に応じて追加検索ツールを呼び出し</li>
-            </ol>
-          </div>
-          <div className="rounded-2xl border border-stone-200 bg-white/70 p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-              Quick prompts
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {prompts.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => setInput(prompt)}
-                  className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm text-stone-700 transition hover:border-[var(--accent)] hover:text-stone-950"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="flex h-[660px] flex-col rounded-[28px] border border-stone-200 bg-white/70 p-5 shadow-[0_24px_70px_-50px_rgba(15,10,5,0.35)] backdrop-blur">
-          <div
-            ref={containerRef}
-            className="flex-1 space-y-3 overflow-y-auto rounded-[24px] border border-stone-200 bg-white/70 p-4"
-          >
-            {isLoadingHistory && (
-              <div className="text-sm text-stone-500">履歴を読み込み中...</div>
-            )}
-            {!isLoadingHistory && messages.length === 0 && (
-              <div className="space-y-3 text-sm text-stone-500">
-                <p>まだチャット履歴がありません。</p>
-                <p>右下の入力欄から質問を投げてください。</p>
-              </div>
-            )}
-            {previewMarkdown && (
-              <div className="flex justify-start">
-                <div className="w-full rounded-2xl bg-stone-100 px-4 py-2 text-sm leading-relaxed text-stone-800 shadow-sm">
-                  <div className="markdown markdown-body">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {previewMarkdown}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-            )}
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`rounded-2xl px-4 py-2 text-sm leading-relaxed shadow-sm ${
-                    message.role === "user"
-                      ? "max-w-[85%] whitespace-pre-wrap bg-[var(--accent)] text-white"
-                      : "w-full whitespace-normal bg-stone-100 text-stone-800"
-                  }`}
-                >
-                  {message.role === "assistant" ? (
-                    <div className="markdown markdown-body">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {renderMessageText(message)}
-                      </ReactMarkdown>
-                    </div>
-                  ) : (
-                    renderMessageText(message)
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          <form
-            onSubmit={async (event) => {
-              event.preventDefault();
-              if (!input.trim()) return;
-              const accessToken = session?.access_token;
-              if (!accessToken) {
-                setAuthNotice("Sign in to start a chat.");
-                return;
-              }
-              let activeChatId = chatId;
-              if (!activeChatId) {
-                activeChatId = generateChatId();
-                setChatId(activeChatId);
+      {!session?.user ? (
+        <LandingHero />
+      ) : (
+        <main className="mx-auto w-full max-w-6xl px-6 pb-12 pt-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch">
+            <Sidebar
+              sessions={sessions}
+              chatId={chatId}
+              onNewChat={handleNewChat}
+              onSelectChat={(id) => {
+                setChatId(id);
                 setMessages([]);
-              }
-              await sendMessage(
-                { text: input },
-                {
-                  body: { chatId: activeChatId },
-                  headers: { Authorization: `Bearer ${accessToken}` },
-                }
-              );
-              setInput("");
-              refreshSessions();
-            }}
-            className="mt-4 flex gap-3 rounded-2xl border border-stone-200 bg-white/90 p-3"
-          >
-            <input
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="Notionの知識を検索して質問する"
-              className="flex-1 bg-transparent px-3 text-sm text-stone-800 outline-none placeholder:text-stone-400"
+              }}
             />
-            <button
-              type="submit"
-              disabled={isBusy || !session?.access_token}
-              className="rounded-full bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-dark)] disabled:opacity-60"
-            >
-              {isBusy ? "送信中..." : "送信"}
-            </button>
-          </form>
-          <p className="mt-3 text-xs text-stone-500">
-            モデルは回答時にNotionデータを検索します。重要な情報は引用番号で確認してください。
-          </p>
-        </section>
-      </main>
+
+            <ChatPanel
+              containerRef={containerRef}
+              isLoadingHistory={isLoadingHistory}
+              messages={messages}
+              previewMarkdown={previewMarkdown}
+              renderMessageText={renderMessageText}
+              input={input}
+              onInputChange={setInput}
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (!input.trim()) return;
+                const accessToken = session?.access_token;
+                if (!accessToken) {
+                  setAuthNotice("Sign in to start a chat.");
+                  return;
+                }
+                let activeChatId = chatId;
+                if (!activeChatId) {
+                  activeChatId = generateChatId();
+                  setChatId(activeChatId);
+                  setMessages([]);
+                }
+                await sendMessage(
+                  { text: input },
+                  {
+                    body: { chatId: activeChatId },
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                  }
+                );
+                setInput("");
+                refreshSessions();
+              }}
+              isBusy={isBusy}
+              canSend={Boolean(session?.access_token)}
+            />
+          </div>
+        </main>
+      )}
     </div>
   );
 }
