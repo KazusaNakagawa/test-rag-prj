@@ -9,6 +9,7 @@ import type { ModelMessage } from "ai";
 import { formatDocumentsForPrompt, retrieveDocuments } from "@/lib/rag";
 import { appendAppLog } from "@/lib/app-logger";
 import { requireUser } from "@/lib/supabase-server";
+import { CHAT_MODEL } from "@/lib/ai-config";
 
 export const runtime = "nodejs";
 
@@ -111,7 +112,7 @@ export async function POST(req: Request) {
   ];
 
   const result = streamText({
-    model: openai("gpt-4o-mini"),
+    model: openai(CHAT_MODEL),
     messages: modelMessages,
     system: [
       "You are a precise RAG assistant for Notion knowledge.",
@@ -164,7 +165,7 @@ export async function POST(req: Request) {
         user_id: auth.user.id,
         user_message: query,
         assistant_message: text,
-        model: "gpt-4o-mini",
+        model: CHAT_MODEL,
         finish_reason: event.finishReason ?? null,
         prompt_tokens: promptTokens,
         completion_tokens: completionTokens,

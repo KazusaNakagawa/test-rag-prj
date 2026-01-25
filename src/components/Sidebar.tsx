@@ -7,6 +7,15 @@ type SidebarProps = {
   onNewChat: () => void;
 };
 
+const MAX_SESSION_TITLE_LENGTH = 12;
+
+function formatSessionTitle(title: string | null) {
+  const fallback = "New chat";
+  const value = title?.trim() || fallback;
+  if (value.length <= MAX_SESSION_TITLE_LENGTH) return value;
+  return `${value.slice(0, MAX_SESSION_TITLE_LENGTH)}...`;
+}
+
 /**
  * Left sidebar listing chat sessions and quick actions.
  */
@@ -45,7 +54,7 @@ export default function Sidebar({
                 : "border-white/10 bg-white/5 text-stone-200 hover:border-[var(--accent)]"
             }`}
           >
-            {session.title || "New chat"}
+            {formatSessionTitle(session.title)}
           </button>
         ))}
       </div>

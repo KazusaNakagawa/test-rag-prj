@@ -1,4 +1,4 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import { Client } from "@notionhq/client";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
@@ -7,6 +7,9 @@ import { requireEnv } from "../src/lib/env";
 type RichTextItem = {
   plain_text: string;
 };
+
+const envPath = process.argv[2];
+dotenv.config(envPath ? { path: envPath } : undefined);
 
 const notion = new Client({
   auth: requireEnv("NOTION_API_KEY"),
