@@ -21,7 +21,7 @@ npm run ingest:notion
 `.env.local` を使う場合は以下のように実行します。
 
 ```bash
-npm run ingest:notion -f .env.local
+npm run ingest:notion -- .env.local
 ```
 
 4. 開発サーバー起動
