@@ -34,3 +34,7 @@ Vercelにデプロイする場合は、以下の環境変数を設定してく�
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `NOTION_API_KEY`
 - `NOTION_DATABASE_ID`
+
+## ローカル検証
+
+手順は `docs/local-validation.md` を参照してください。
