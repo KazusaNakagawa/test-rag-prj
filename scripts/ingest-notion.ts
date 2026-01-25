@@ -176,11 +176,7 @@ async function ingestDatabase() {
   const pages: any[] = [];
 
   do {
-    const response = await notion.databases.query({
-      database_id: databaseId,
-      start_cursor: cursor,
-      page_size: 100,
-    });
+    const response = await queryDatabasePages(databaseId, cursor);
     pages.push(...response.results);
     cursor = response.has_more ? response.next_cursor ?? undefined : undefined;
   } while (cursor);
@@ -193,6 +189,44 @@ async function ingestDatabase() {
   for (const page of pages) {
     await ingestPage(page);
   }
+}
+
+async function queryDatabasePages(
+  targetDatabaseId: string,
+  startCursor?: string
+) {
+  const databasesApi = (notion as any).databases;
+  if (databasesApi && typeof databasesApi.query === "function") {
+    return databasesApi.query({
+      database_id: targetDatabaseId,
+      start_cursor: startCursor,
+      page_size: 100,
+    });
+  }
+
+  const database = await notion.databases.retrieve({
+    database_id: targetDatabaseId,
+  });
+  const dataSourceId = (database as any).data_sources?.[0]?.id;
+  if (!dataSourceId) {
+    throw new Error(
+      "No data source found for the database. Check NOTION_DATABASE_ID."
+    );
+  }
+
+  const dataSourcesApi = (notion as any).dataSources;
+  if (!dataSourcesApi || typeof dataSourcesApi.query !== "function") {
+    throw new Error(
+      "This Notion client does not support dataSources.query."
+    );
+  }
+
+  return dataSourcesApi.query({
+    data_source_id: dataSourceId,
+    start_cursor: startCursor,
+    page_size: 100,
+    result_type: "page",
+  });
 }
 
 ingestDatabase().catch((error) => {
