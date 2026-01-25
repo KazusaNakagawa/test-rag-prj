@@ -83,7 +83,13 @@ export default function ChatPanel({
         ))}
       </div>
       <form
-        onSubmit={onSubmit}
+        onSubmit={(event) => {
+          if (isBusy || !canSend) {
+            event.preventDefault();
+            return;
+          }
+          onSubmit(event);
+        }}
         className="mt-4 flex gap-3 rounded-2xl border border-white/10 bg-white/5 p-3"
       >
         <input
