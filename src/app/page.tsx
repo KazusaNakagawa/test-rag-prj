@@ -263,10 +263,10 @@ export default function Home() {
               onInputChange={setInput}
               onSubmit={async (event) => {
                 event.preventDefault();
-                if (!input.trim()) return;
+                if (isBusy || !input.trim()) return;
                 const accessToken = session?.access_token;
                 if (!accessToken) {
-                  setAuthNotice("Sign in to start a chat.");
+                  setAuthNotice("サインインしてからチャットを開始してください。");
                   return;
                 }
                 let activeChatId = chatId;
