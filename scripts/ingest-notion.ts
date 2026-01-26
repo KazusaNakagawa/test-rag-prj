@@ -8,7 +8,29 @@ type RichTextItem = {
   plain_text: string;
 };
 
-const envPath = process.argv[2];
+function resolveEnvPath(args: string[]) {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "-f" || arg === "--env" || arg === "--env-file") {
+      return args[i + 1];
+    }
+    if (arg.startsWith("--env=")) {
+      return arg.slice("--env=".length);
+    }
+    if (arg.startsWith("--env-file=")) {
+      return arg.slice("--env-file=".length);
+    }
+  }
+  const first = args[0];
+  if (first && !first.startsWith("-")) {
+    return first;
+  }
+  return undefined;
+}
+
+const envArgs = process.argv.slice(2);
+const envPath =
+  resolveEnvPath(envArgs) ?? process.env.DOTENV_CONFIG_PATH ?? undefined;
 dotenv.config(envPath ? { path: envPath } : undefined);
 
 const notion = new Client({
