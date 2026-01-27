@@ -66,7 +66,9 @@ export async function POST(req: Request) {
   const query = getUserText(latestUserMessage);
   const sessionTitle = truncateTitle(getUserText(firstUserMessage) || "New chat");
   const sessionId = chatId;
-  const initialMatches = query ? await retrieveDocuments(query, 5) : [];
+  const initialMatches = query
+    ? await retrieveDocuments(query, 5, auth.supabase)
+    : [];
   const context = formatDocumentsForPrompt(initialMatches);
   const requestId = crypto.randomUUID();
   console.info("[rag] initial matches", {
@@ -141,7 +143,11 @@ export async function POST(req: Request) {
             }),
             execute: async (params: any) => {
               const { query, topK = 5 } = params ?? {};
-              const matches = await retrieveDocuments(query, topK);
+              const matches = await retrieveDocuments(
+                query,
+                topK,
+                auth.supabase
+              );
               return matches.map((match: any) => ({
                 title: match.title,
                 content: match.content,
