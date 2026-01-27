@@ -50,6 +50,8 @@ const supabase = createClient(
 );
 
 const databaseId = requireEnv("NOTION_DATABASE_ID");
+const tenantId = requireEnv("NOTION_TENANT_ID");
+const ownerId = process.env.NOTION_OWNER_ID || null;
 
 function getPlainText(richText?: RichTextItem[]) {
   if (!richText) return "";
@@ -172,11 +174,16 @@ async function ingestPage(page: any) {
     .from("documents")
     .delete()
     .eq("source", "notion")
-    .eq("source_id", page.id);
+    .eq("source_id", page.id)
+    .eq("source_db_id", databaseId)
+    .eq("tenant_id", tenantId);
 
   const rows = chunks.map((chunk, index) => ({
+    tenant_id: tenantId,
+    owner_id: ownerId,
     source: "notion",
     source_id: page.id,
+    source_db_id: databaseId,
     title,
     content: chunk,
     chunk_index: index,
@@ -197,6 +204,22 @@ async function ingestPage(page: any) {
 }
 
 async function ingestDatabase() {
+  const { error: sourceError } = await supabase
+    .from("document_sources")
+    .upsert(
+      {
+        source: "notion",
+        source_db_id: databaseId,
+        tenant_id: tenantId,
+        owner_id: ownerId,
+        is_searchable: true,
+      },
+      { onConflict: "source,source_db_id,tenant_id" }
+    );
+  if (sourceError) {
+    throw new Error(`Failed to upsert document source: ${sourceError.message}`);
+  }
+
   let cursor: string | undefined;
   const pages: any[] = [];
 
