@@ -44,4 +44,4 @@ Vercelにデプロイする場合は、以下の環境変数を設定してく�
 
 ## ローカル検証
 
-手順は [`docs/local-validation.md`](./docs/local-validation.md) を参照してください。
+手順は [`docs/01-setup-local-validation.md`](./docs/01-setup-local-validation.md) を参照してください。

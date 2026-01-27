@@ -88,7 +88,7 @@ Fix:
   - Use an external SMTP provider with a free tier to avoid the built-in cap.
 - Alternative providers (OAuth, passkeys, etc.) are possible but require
   dashboard setup and client-side changes.
-- Step-by-step: [Local auth alternatives](auth-local-dev.md)
+- Step-by-step: [Local auth alternatives](01-setup-auth-local-dev.md)
 
 ## Supabase CLI on Rancher Desktop
 
@@ -98,7 +98,7 @@ Symptoms:
 
 Fix:
 - Point `/var/run/docker.sock` to `~/.rd/docker.sock` or disable analytics.
-- Step-by-step: [Rancher Desktop setup](rancher-desktop-supabase-local.md)
+- Step-by-step: [Rancher Desktop setup](01-setup-rancher-desktop-supabase-local.md)
 
 ## Auth / RLS migration
 
