@@ -261,6 +261,11 @@ async function retrieveFromNotion(query: string, topK: number) {
 
 /**
  * Retrieve documents from vector search and keyword fallback.
+ *
+ * WARNING: Pass a user-scoped Supabase client to respect RLS.
+ * Omitting `supabase` falls back to the service-role client and bypasses RLS,
+ * so only do that in trusted, authenticated server contexts (or when
+ * intentionally using Notion fallback without Supabase).
  */
 export async function retrieveDocuments(
   query: string,

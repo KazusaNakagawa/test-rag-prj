@@ -18,7 +18,7 @@ environment.
 
 2. Apply the schema
    - Run `supabase/schema.sql` in Studio  
-     Studio: http://127.0.0.1:54323
+     Studio: `http://127.0.0.1:54323`
    - Or use `psql`
      ```bash
      psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
@@ -32,7 +32,7 @@ environment.
    - Replace `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
      `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` with local Supabase values.
    - `OPENAI_API_KEY` is required.
-   - If you ingest Notion, also set `NOTION_API_KEY` and `NOTION_DATABASE_ID`.
+  - If you ingest Notion, also set `NOTION_API_KEY`, `NOTION_DATABASE_ID`, and required `NOTION_TENANT_ID` (optional `NOTION_OWNER_ID` for owner attribution).
 
 4. Install dependencies and run
    ```bash
