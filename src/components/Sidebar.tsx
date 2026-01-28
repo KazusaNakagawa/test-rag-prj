@@ -10,6 +10,9 @@ type SidebarProps = {
 
 const MAX_SESSION_TITLE_LENGTH = 12;
 
+/**
+ * Clamp session titles to a compact label for the sidebar list.
+ */
 function formatSessionTitle(title: string | null) {
   const fallback = "New chat";
   const value = title?.trim() || fallback;

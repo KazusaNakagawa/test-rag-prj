@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { Client } from "@notionhq/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@supabase/supabase-js";
 import { requireEnv } from "./env";
 
@@ -260,11 +261,24 @@ async function retrieveFromNotion(query: string, topK: number) {
 
 /**
  * Retrieve documents from vector search and keyword fallback.
+ *
+ * WARNING: Pass a user-scoped Supabase client to respect RLS.
+ * Omitting `supabase` falls back to the service-role client and bypasses RLS,
+ * so only do that in trusted, authenticated server contexts (or when
+ * intentionally using Notion fallback without Supabase).
  */
-export async function retrieveDocuments(query: string, topK = 5) {
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    return retrieveFromNotion(query, topK);
+export async function retrieveDocuments(
+  query: string,
+  topK = 5,
+  supabase?: SupabaseClient,
+  options?: { fallbackToNotion?: boolean }
+) {
+  const supabaseClient = supabase ?? getSupabaseClient();
+  if (!supabaseClient) {
+    if (options?.fallbackToNotion) {
+      return retrieveFromNotion(query, topK);
+    }
+    return [];
   }
 
   const keywords = extractKeywords(query);
@@ -275,7 +289,7 @@ export async function retrieveDocuments(query: string, topK = 5) {
   });
 
   const [embedding] = embeddingResponse.data;
-  const { data, error } = await supabase.rpc("match_documents", {
+  const { data, error } = await supabaseClient.rpc("match_documents", {
     query_embedding: embedding.embedding,
     match_count: Math.max(topK, 12),
   });
@@ -295,7 +309,7 @@ export async function retrieveDocuments(query: string, topK = 5) {
         return [`title.ilike.${pattern}`, `content.ilike.${pattern}`];
       })
       .join(",");
-    const { data: keywordData, error: keywordError } = await supabase
+    const { data: keywordData, error: keywordError } = await supabaseClient
       .from("documents")
       .select(
         "id, source, source_id, title, content, chunk_index, url, metadata"
@@ -328,7 +342,16 @@ export async function retrieveDocuments(query: string, topK = 5) {
     });
   }
 
-  return merged.slice(0, topK);
+  // Dedupe by source_id to increase variety across documents.
+  const seenSources = new Set<string>();
+  const uniqueBySource: RagMatch[] = [];
+  for (const match of merged) {
+    if (seenSources.has(match.source_id)) continue;
+    seenSources.add(match.source_id);
+    uniqueBySource.push(match);
+  }
+
+  return uniqueBySource.slice(0, topK);
 }
 
 /**

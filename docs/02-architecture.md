@@ -63,7 +63,7 @@ flowchart LR
 
 Notes:
 - During local validation, the Supabase containers stay running while you test.
-- Local Studio is at http://127.0.0.1:54323 and Mailpit at http://127.0.0.1:54324.
+- Local Studio is at `http://127.0.0.1:54323` and Mailpit at `http://127.0.0.1:54324`.
 
 ## Repository Notes
 
