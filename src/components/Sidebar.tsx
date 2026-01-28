@@ -11,7 +11,10 @@ type SidebarProps = {
 const MAX_SESSION_TITLE_LENGTH = 12;
 
 /**
- * Clamp session titles to a compact label for the sidebar list.
+ * Produce a compact label for a session title suitable for sidebar display.
+ *
+ * @param title - The session title or `null`; leading and trailing whitespace are ignored
+ * @returns The trimmed title if its length is 12 characters or fewer, otherwise the title truncated to 12 characters with "..." appended; returns "New chat" when `title` is `null` or empty
  */
 function formatSessionTitle(title: string | null) {
   const fallback = "New chat";

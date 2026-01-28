@@ -260,12 +260,21 @@ async function retrieveFromNotion(query: string, topK: number) {
 }
 
 /**
- * Retrieve documents from vector search and keyword fallback.
+ * Retrieve relevant documents using vector similarity with an optional keyword fallback.
  *
- * WARNING: Pass a user-scoped Supabase client to respect RLS.
- * Omitting `supabase` falls back to the service-role client and bypasses RLS,
- * so only do that in trusted, authenticated server contexts (or when
- * intentionally using Notion fallback without Supabase).
+ * Uses an embedding-based vector search plus an optional keyword text search, merges results,
+ * removes duplicate document IDs and duplicate source_id entries to increase variety, and
+ * returns up to `topK` matches. If no Supabase client is available and `options.fallbackToNotion`
+ * is true, falls back to searching Notion; otherwise returns an empty array when no client is available.
+ *
+ * @param query - The user query to search for.
+ * @param topK - Maximum number of documents to return (default: 5).
+ * @param supabase - Optional Supabase client to use for queries; provide a user-scoped client to respect RLS.
+ *                   Omitting this will use the service-role client created by the module (may bypass RLS).
+ * @param options.fallbackToNotion - If true and no Supabase client can be obtained, query Notion as a fallback.
+ * @returns An array of `RagMatch` objects representing the top matching documents, deduplicated by `source_id`
+ *          and limited to `topK`.
+ * @throws If the Supabase RPC vector search or the Supabase keyword search fails.
  */
 export async function retrieveDocuments(
   query: string,

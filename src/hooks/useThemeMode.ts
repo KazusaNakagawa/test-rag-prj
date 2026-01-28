@@ -5,7 +5,10 @@ export type ThemeMode = "light" | "dark" | "system";
 const THEME_STORAGE_KEY = "ui-theme-mode";
 
 /**
- * Resolve the effective theme mode, honoring system preferences when requested.
+ * Determine the effective theme, using the system preference when `mode` is `"system"`.
+ *
+ * @param mode - The requested theme mode (`"light"`, `"dark"`, or `"system"`)
+ * @returns The resolved theme (`"light"` or `"dark"`). If `mode` is `"system"` and the runtime has no `window` (e.g., SSR), returns `"light"`.
  */
 function resolveTheme(mode: ThemeMode) {
   if (mode !== "system") return mode;
@@ -16,7 +19,14 @@ function resolveTheme(mode: ThemeMode) {
 }
 
 /**
- * Sync theme preference with local storage and apply it to the document root.
+ * Manage and persist the UI theme mode and apply the resolved theme to the document root.
+ *
+ * Reads a previously saved theme from localStorage on mount (silently ignoring access errors),
+ * writes changes to localStorage, sets `document.documentElement.dataset.theme` to the resolved
+ * value (`"light"` or `"dark"`), and, when mode is `"system"`, listens for system
+ * color-scheme changes to re-apply the resolved theme.
+ *
+ * @returns An object containing `mode` (the current ThemeMode) and `setMode` (a setter to update it)
  */
 export function useThemeMode() {
   const [mode, setMode] = useState<ThemeMode>("system");
