@@ -53,6 +53,12 @@ const databaseId = requireEnv("NOTION_DATABASE_ID");
 const tenantId = requireEnv("NOTION_TENANT_ID");
 const ownerId = process.env.NOTION_OWNER_ID || null;
 
+/**
+ * Concatenates the `plain_text` fields of each RichTextItem into a single string.
+ *
+ * @param richText - Optional array of RichTextItem objects to extract text from
+ * @returns The concatenated plain text from `richText`, or an empty string if `richText` is undefined
+ */
 function getPlainText(richText?: RichTextItem[]) {
   if (!richText) return "";
   return richText.map((item) => item.plain_text).join("");
@@ -157,6 +163,12 @@ async function embedChunks(chunks: string[]) {
   return embeddings;
 }
 
+/**
+ * Ingests a Notion page into the documents table by extracting text, chunking it, embedding chunks, and storing them with tenant and ownership metadata.
+ *
+ * @param page - Notion page object; must include `id`, `url`, `last_edited_time`, and properties used to derive the title.
+ * @throws Error if inserting chunk rows into the documents table fails.
+ */
 async function ingestPage(page: any) {
   const title = getPageTitle(page);
   const texts = await collectBlockText(page.id);
@@ -203,6 +215,11 @@ async function ingestPage(page: any) {
   console.log(`Ingested ${title} (${rows.length} chunks)`);
 }
 
+/**
+ * Ingests all pages from the configured Notion database into the application's document store.
+ *
+ * Upserts a `document_sources` record for the Notion database (including tenant and owner metadata) and throws if that upsert fails. Then pages from the Notion database are retrieved (handling pagination); if no pages are found a message is logged and the function returns. Each retrieved page is processed by calling `ingestPage`.
+ */
 async function ingestDatabase() {
   const { error: sourceError } = await supabase
     .from("document_sources")
