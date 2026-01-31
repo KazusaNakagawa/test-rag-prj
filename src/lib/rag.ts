@@ -20,6 +20,9 @@ type RichTextItem = {
   plain_text: string;
 };
 
+const DEFAULT_MIN_SIMILARITY = 0.25;
+const DEFAULT_TOOL_THRESHOLD = 0.5;
+
 const openai = new OpenAI({
   apiKey: requireEnv("OPENAI_API_KEY"),
 });
@@ -67,6 +70,39 @@ function escapePostgrestLike(value: string) {
   return value.replace(/([\\%_"])/g, "\\$1");
 }
 
+function getMinSimilarity() {
+  const raw = process.env.RAG_MIN_SIMILARITY;
+  if (!raw) return DEFAULT_MIN_SIMILARITY;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_MIN_SIMILARITY;
+  return Math.min(1, Math.max(0, parsed));
+}
+
+function getToolThreshold() {
+  const raw = process.env.RAG_TOOL_THRESHOLD;
+  if (!raw) return DEFAULT_TOOL_THRESHOLD;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_TOOL_THRESHOLD;
+  return Math.min(1, Math.max(0, parsed));
+}
+
+/**
+ * Get the maximum similarity score from a set of matches.
+ */
+export function getMaxSimilarity(matches: RagMatch[]) {
+  if (matches.length === 0) return 0;
+  return Math.max(...matches.map((m) => m.similarity));
+}
+
+/**
+ * Determine if tools should be enabled based on match quality.
+ */
+export function shouldEnableTools(matches: RagMatch[]) {
+  if (matches.length === 0) return true;
+  const maxSim = getMaxSimilarity(matches);
+  return maxSim < getToolThreshold();
+}
+
 /**
  * Wrap a PostgREST filter value in quotes with escaping.
  */
@@ -75,12 +111,27 @@ function quotePostgrestValue(value: string) {
 }
 
 /**
- * Extract short keyword tokens from a query for fallback text search.
+ * Extract keyword tokens from a query for fallback text search.
+ * Supports both alphanumeric and Japanese tokens.
  */
 function extractKeywords(query: string) {
-  const tokens =
+  // Match alphanumeric tokens
+  const alphanumericTokens =
     query.match(/[A-Za-z0-9][A-Za-z0-9+._-]*/g)?.map((token) => token.trim()) ??
     [];
+
+  // Match Japanese tokens (hiragana, katakana, kanji)
+  const japaneseTokens =
+    query.match(/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+/g)?.map((token) => token.trim()) ??
+    [];
+
+  const tokens = [...alphanumericTokens, ...japaneseTokens];
+
+  // If no tokens found, use the trimmed query as a single keyword for fallback
+  if (tokens.length === 0 && query.trim()) {
+    return [query.trim().slice(0, 50)];
+  }
+
   return Array.from(new Set(tokens.filter(Boolean))).slice(0, 6);
 }
 
@@ -203,6 +254,46 @@ function scoreByKeywords(match: RagMatch, keywords: string[]) {
 }
 
 /**
+ * Detect if a query contains recency intent (recent, latest, new, etc.).
+ */
+function hasRecencyIntent(query: string) {
+  const lowerQuery = query.toLowerCase();
+  const recencyPatterns = [
+    /\brecent\b/,
+    /\blatest\b/,
+    /\bnew(est)?\b/,
+    /\blast\s+(week|month|year)\b/,
+    /\btoday\b/,
+    /\byesterday\b/,
+    /最新/,
+    /最近/,
+    /新しい/,
+    /今日/,
+    /昨日/,
+  ];
+  return recencyPatterns.some((pattern) => pattern.test(lowerQuery));
+}
+
+/**
+ * Get recency score based on last_edited_time in metadata.
+ * Returns a value between 0 and 1, where 1 is most recent.
+ */
+function getRecencyScore(match: RagMatch) {
+  const lastEdited = match.metadata?.last_edited_time as string | undefined;
+  if (!lastEdited) return 0;
+
+  const editedDate = new Date(lastEdited);
+  if (Number.isNaN(editedDate.getTime())) return 0;
+
+  const now = Date.now();
+  const ageMs = now - editedDate.getTime();
+  const maxAgeMs = 365 * 24 * 60 * 60 * 1000; // 1 year
+
+  // More recent = higher score (exponential decay)
+  return Math.max(0, 1 - ageMs / maxAgeMs);
+}
+
+/**
  * Retrieve top documents directly from Notion when Supabase is unavailable.
  */
 async function retrieveFromNotion(query: string, topK: number) {
@@ -308,6 +399,10 @@ export async function retrieveDocuments(
   }
 
   const vectorMatches = (data ?? []) as RagMatch[];
+  const minSimilarity = getMinSimilarity();
+  const filteredVectorMatches = vectorMatches.filter(
+    (match) => match.similarity >= minSimilarity
+  );
 
   let keywordMatches: RagMatch[] = [];
   if (keywords.length > 0) {
@@ -336,20 +431,32 @@ export async function retrieveDocuments(
 
   const seen = new Set<string>();
   const merged: RagMatch[] = [];
-  for (const match of [...vectorMatches, ...keywordMatches]) {
+  for (const match of [...filteredVectorMatches, ...keywordMatches]) {
     if (seen.has(match.id)) continue;
     seen.add(match.id);
     merged.push(match);
   }
 
-  if (keywords.length > 0) {
-    merged.sort((a, b) => {
+  const wantsRecent = hasRecencyIntent(query);
+
+  // Sort by keyword score, then recency (if applicable), then similarity
+  merged.sort((a, b) => {
+    // Primary: keyword score (if keywords exist)
+    if (keywords.length > 0) {
       const scoreDiff =
         scoreByKeywords(b, keywords) - scoreByKeywords(a, keywords);
       if (scoreDiff !== 0) return scoreDiff;
-      return b.similarity - a.similarity;
-    });
-  }
+    }
+
+    // Secondary: recency (if query has recency intent)
+    if (wantsRecent) {
+      const recencyDiff = getRecencyScore(b) - getRecencyScore(a);
+      if (Math.abs(recencyDiff) > 0.01) return recencyDiff;
+    }
+
+    // Tertiary: similarity
+    return b.similarity - a.similarity;
+  });
 
   // Dedupe by source_id to increase variety across documents.
   const seenSources = new Set<string>();

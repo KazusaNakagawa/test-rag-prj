@@ -6,7 +6,7 @@ import {
   stepCountIs,
 } from "ai";
 import type { ModelMessage } from "ai";
-import { formatDocumentsForPrompt, retrieveDocuments } from "@/lib/rag";
+import { formatDocumentsForPrompt, retrieveDocuments, shouldEnableTools } from "@/lib/rag";
 import { appendAppLog } from "@/lib/app-logger";
 import { requireUser } from "@/lib/supabase-server";
 import { CHAT_MODEL } from "@/lib/ai-config";
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
     console.warn("[rag] failed to write chat_request log", error);
   }
 
-  const shouldEnableTools = initialMatches.length === 0;
+  const enableTools = shouldEnableTools(initialMatches);
 
   let historyMessages: ModelMessage[] = [];
   try {
@@ -127,7 +127,7 @@ export async function POST(req: Request) {
       "Context:",
       context,
     ].join("\n"),
-    tools: shouldEnableTools
+    tools: enableTools
       ? {
           search_documents: tool({
             description:
@@ -158,7 +158,7 @@ export async function POST(req: Request) {
           }) as any,
         }
       : undefined,
-    toolChoice: shouldEnableTools ? "auto" : "none",
+    toolChoice: enableTools ? "auto" : "none",
     stopWhen: stepCountIs(3),
     onFinish: async (event) => {
       const text = event.text ?? "";

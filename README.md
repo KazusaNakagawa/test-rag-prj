@@ -36,6 +36,7 @@ Vercelにデプロイする場合は、以下の環境変数を設定してく�
 
 - `OPENAI_API_KEY`
 - `OPENAI_CHAT_MODEL` (optional, default: `gpt-4o-mini`)
+- `RAG_MIN_SIMILARITY` (optional, default: `0.25`)
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
