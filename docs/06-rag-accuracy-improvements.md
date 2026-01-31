@@ -86,6 +86,6 @@ To verify the improvements:
 2. Test queries with recency intent ("最新の記事", "recent articles") to confirm recency ranking
 3. Test queries with low-similarity matches to confirm tool re-search is triggered
 
-## Test Rsults
+## Test Results
 
 ![alt text](./images/image.png)
